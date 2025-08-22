@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
-import { FirebaseService } from '../services/firebaseService';
 import { Meeting } from '../types';
 import { format, isAfter, isBefore } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -9,28 +10,58 @@ export default function MeetingsList() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'overdue' | 'cancelled'>('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [updating, setUpdating] = useState<string | null>(null);
   const { currentUser } = useAuth();
-  const firebaseService = FirebaseService.getInstance();
 
   useEffect(() => {
     if (!currentUser) return;
 
-    const unsubscribe = firebaseService.subscribeToUserMeetings(
-      currentUser.uid,
-      (meetingsData) => {
-        setMeetings(meetingsData);
-        setLoading(false);
-      }
+    const meetingsQuery = query(
+      collection(db, 'meetings'),
+      where('createdBy', '==', currentUser.uid)
     );
+
+    const unsubscribe = onSnapshot(meetingsQuery, (snapshot) => {
+      const meetingsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime?.toDate(),
+        endTime: doc.data().endTime?.toDate(),
+        createdAt: doc.data().createdAt?.toDate(),
+        updatedAt: doc.data().updatedAt?.toDate()
+      })) as Meeting[];
+
+      setMeetings(meetingsData);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error loading meetings:', error);
+      setError('Error al cargar las reuniones');
+      setLoading(false);
+    });
 
     return () => unsubscribe();
   }, [currentUser]);
 
   const updateMeetingStatus = async (meetingId: string, status: 'pending' | 'completed' | 'cancelled') => {
     try {
-      await firebaseService.updateMeeting(meetingId, { status });
+      setError('');
+      setUpdating(meetingId);
+      
+      await updateDoc(doc(db, 'meetings', meetingId), {
+        status,
+        updatedAt: new Date()
+      });
+      
+      // Mostrar mensaje de éxito temporal
+      setTimeout(() => {
+        setUpdating(null);
+      }, 1000);
+      
     } catch (error) {
       console.error('Error updating meeting status:', error);
+      setError('Error al actualizar el estado de la reunión');
+      setUpdating(null);
     }
   };
 
@@ -87,6 +118,8 @@ export default function MeetingsList() {
   return (
     <div className="meetings-list-container">
       <h2>Mis Reuniones</h2>
+      
+      {error && <div className="error">{error}</div>}
       
       <div className="filter-buttons">
         <button 
@@ -166,37 +199,50 @@ export default function MeetingsList() {
               </div>
 
               <div className="meeting-actions">
-                {meeting.status === 'pending' && (
-                  <div className="action-buttons">
-                    <button 
-                      onClick={() => updateMeetingStatus(meeting.id, 'completed')}
-                      className="btn-success"
-                    >
-                      ✓ Completar
-                    </button>
-                    <button 
-                      onClick={() => updateMeetingStatus(meeting.id, 'cancelled')}
-                      className="btn-danger"
-                    >
-                      ✗ Cancelar
-                    </button>
+                {updating === meeting.id && (
+                  <div className="updating-message">
+                    ✓ Actualizando...
                   </div>
                 )}
-                {meeting.status === 'completed' && (
-                  <button 
-                    onClick={() => updateMeetingStatus(meeting.id, 'pending')}
-                    className="btn-secondary"
-                  >
-                    ↻ Reabrir
-                  </button>
-                )}
-                {meeting.status === 'cancelled' && (
-                  <button 
-                    onClick={() => updateMeetingStatus(meeting.id, 'pending')}
-                    className="btn-secondary"
-                  >
-                    ↻ Reactivar
-                  </button>
+                {updating !== meeting.id && (
+                  <>
+                    {meeting.status === 'pending' && (
+                      <div className="action-buttons">
+                        <button 
+                          onClick={() => updateMeetingStatus(meeting.id, 'completed')}
+                          className="btn-success"
+                          title="Marcar como completada"
+                        >
+                          ✅ Completar
+                        </button>
+                        <button 
+                          onClick={() => updateMeetingStatus(meeting.id, 'cancelled')}
+                          className="btn-danger"
+                          title="Cancelar reunión"
+                        >
+                          ❌ Cancelar
+                        </button>
+                      </div>
+                    )}
+                    {meeting.status === 'completed' && (
+                      <button 
+                        onClick={() => updateMeetingStatus(meeting.id, 'pending')}
+                        className="btn-secondary"
+                        title="Reabrir reunión"
+                      >
+                        🔄 Reabrir
+                      </button>
+                    )}
+                    {meeting.status === 'cancelled' && (
+                      <button 
+                        onClick={() => updateMeetingStatus(meeting.id, 'pending')}
+                        className="btn-secondary"
+                        title="Reactivar reunión"
+                      >
+                        🔄 Reactivar
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

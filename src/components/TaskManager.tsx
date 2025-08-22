@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { Task } from '../types';
@@ -17,64 +17,59 @@ export default function TaskManager() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [updating, setUpdating] = useState<string | null>(null);
   const { currentUser } = useAuth();
 
   useEffect(() => {
     if (!currentUser) return;
 
-    console.log('TaskManager: Iniciando carga de tareas para usuario:', currentUser.uid);
-    
-    // Por ahora, solo inicializamos sin listener para evitar errores de Firestore
-    const loadInitialTasks = async () => {
-      try {
-        console.log('TaskManager: Carga básica completada');
-        setTasks([]); // Iniciar vacío por ahora
-        setLoading(false);
-      } catch (error) {
-        console.error('TaskManager: Error cargando tareas:', error);
-        setLoading(false);
-      }
-    };
+    const tasksQuery = query(
+      collection(db, 'tasks'),
+      where('createdBy', '==', currentUser.uid)
+    );
 
-    loadInitialTasks();
+    const unsubscribe = onSnapshot(tasksQuery, (snapshot) => {
+      const tasksData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        dueDate: doc.data().dueDate?.toDate(),
+        createdAt: doc.data().createdAt?.toDate(),
+        updatedAt: doc.data().updatedAt?.toDate()
+      })) as Task[];
+
+      setTasks(tasksData);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error loading tasks:', error);
+      setError('Error al cargar las tareas');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setError('');
 
     try {
-      console.log('TaskManager: Creando nueva tarea directamente en Firestore...');
-      
       const taskData = {
         title,
         description,
         dueDate: dueDate ? new Date(dueDate) : null,
         priority,
         category: category || null,
-        status: 'pending',
+        status: 'pending' as const,
         createdBy: currentUser?.uid || '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
 
-      console.log('TaskManager: Datos de la tarea:', taskData);
+      await addDoc(collection(db, 'tasks'), taskData);
       
-      const docRef = await addDoc(collection(db, 'tasks'), taskData);
-      
-      console.log('TaskManager: Tarea creada exitosamente con ID:', docRef.id);
-      
-      // Agregar la nueva tarea a la lista local
-      const newTask = {
-        id: docRef.id,
-        ...taskData,
-        dueDate: taskData.dueDate,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      } as Task;
-      
-      setTasks([newTask, ...tasks]);
-      
+      // Limpiar formulario
       setTitle('');
       setDescription('');
       setDueDate('');
@@ -82,11 +77,9 @@ export default function TaskManager() {
       setCategory('');
       setShowForm(false);
       
-      alert('¡Tarea creada exitosamente!');
-      
     } catch (error: any) {
-      console.error('TaskManager: Error creando tarea:', error);
-      alert('Error al crear la tarea: ' + error.message);
+      console.error('Error creating task:', error);
+      setError('Error al crear la tarea: ' + error.message);
     }
 
     setSubmitting(false);
@@ -94,22 +87,39 @@ export default function TaskManager() {
 
   const updateTaskStatus = async (taskId: string, status: 'pending' | 'completed') => {
     try {
-      // Por ahora, solo actualizar localmente
-      setTasks(tasks.map(task => 
-        task.id === taskId ? { ...task, status } : task
-      ));
+      setError('');
+      setUpdating(taskId);
+      
+      await updateDoc(doc(db, 'tasks', taskId), {
+        status,
+        updatedAt: new Date()
+      });
+      
+      setTimeout(() => {
+        setUpdating(null);
+      }, 1000);
+      
     } catch (error) {
       console.error('Error updating task status:', error);
+      setError('Error al actualizar el estado de la tarea');
+      setUpdating(null);
     }
   };
 
   const deleteTask = async (taskId: string) => {
     if (window.confirm('¿Estás seguro de que deseas eliminar esta tarea? Esta acción no se puede deshacer.')) {
       try {
-        // Por ahora, solo eliminar localmente
-        setTasks(tasks.filter(task => task.id !== taskId));
+        setError('');
+        setUpdating(taskId);
+        
+        await deleteDoc(doc(db, 'tasks', taskId));
+        
+        setUpdating(null);
+        
       } catch (error) {
         console.error('Error deleting task:', error);
+        setError('Error al eliminar la tarea');
+        setUpdating(null);
       }
     }
   };
@@ -140,6 +150,8 @@ export default function TaskManager() {
           {showForm ? 'Cancelar' : 'Nueva Tarea'}
         </button>
       </div>
+
+      {error && <div className="error">{error}</div>}
 
       {showForm && (
         <form onSubmit={handleSubmit} className="task-form">
@@ -265,30 +277,39 @@ export default function TaskManager() {
                   {task.status === 'pending' ? 'Pendiente' : 'Completada'}
                 </span>
                 
-                <div className="action-buttons">
-                  {task.status === 'pending' ? (
+                {updating === task.id ? (
+                  <div className="updating-message">
+                    ✓ Actualizando...
+                  </div>
+                ) : (
+                  <div className="action-buttons">
+                    {task.status === 'pending' ? (
+                      <button 
+                        onClick={() => updateTaskStatus(task.id, 'completed')}
+                        className="btn-success"
+                        title="Marcar como completada"
+                      >
+                        ✅ Completar
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => updateTaskStatus(task.id, 'pending')}
+                        className="btn-secondary"
+                        title="Reabrir tarea"
+                      >
+                        🔄 Reabrir
+                      </button>
+                    )}
+                    
                     <button 
-                      onClick={() => updateTaskStatus(task.id, 'completed')}
-                      className="btn-success"
+                      onClick={() => deleteTask(task.id)}
+                      className="btn-danger"
+                      title="Eliminar tarea"
                     >
-                      ✓ Completar
+                      🗑 Eliminar
                     </button>
-                  ) : (
-                    <button 
-                      onClick={() => updateTaskStatus(task.id, 'pending')}
-                      className="btn-secondary"
-                    >
-                      ↻ Reabrir
-                    </button>
-                  )}
-                  
-                  <button 
-                    onClick={() => deleteTask(task.id)}
-                    className="btn-danger"
-                  >
-                    🗑 Eliminar
-                  </button>
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, orderBy, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { Meeting, Task } from '../types';
@@ -34,6 +34,9 @@ export default function Calendar() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [selectedItem, setSelectedItem] = useState<(Meeting & { type: 'meeting' }) | (Task & { type: 'task' }) | null>(null);
   const { currentUser } = useAuth();
 
   useEffect(() => {
@@ -133,6 +136,61 @@ export default function Calendar() {
     setShowCreateModal(true);
   };
 
+  const handleItemRightClick = (e: React.MouseEvent, item: (Meeting & { type: 'meeting' }) | (Task & { type: 'task' })) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    setSelectedItem(item);
+    setShowContextMenu(true);
+  };
+
+  const handleItemClick = (e: React.MouseEvent, item: (Meeting & { type: 'meeting' }) | (Task & { type: 'task' })) => {
+    e.stopPropagation();
+    // Para móviles, usar click normal como menú contextual
+    if (window.innerWidth <= 768) {
+      setContextMenuPosition({ x: e.clientX, y: e.clientY });
+      setSelectedItem(item);
+      setShowContextMenu(true);
+    }
+  };
+
+  const closeContextMenu = () => {
+    setShowContextMenu(false);
+    setSelectedItem(null);
+  };
+
+  const updateItemStatus = async (newStatus: 'pending' | 'completed' | 'cancelled') => {
+    if (!selectedItem) return;
+
+    try {
+      if (selectedItem.type === 'meeting') {
+        await updateDoc(doc(db, 'meetings', selectedItem.id), {
+          status: newStatus,
+          updatedAt: new Date()
+        });
+        
+        // Actualizar estado local
+        setMeetings(meetings.map(meeting => 
+          meeting.id === selectedItem.id ? { ...meeting, status: newStatus } : meeting
+        ));
+      } else {
+        await updateDoc(doc(db, 'tasks', selectedItem.id), {
+          status: newStatus as 'pending' | 'completed',
+          updatedAt: new Date()
+        });
+        
+        // Actualizar estado local
+        setTasks(tasks.map(task => 
+          task.id === selectedItem.id ? { ...task, status: newStatus as 'pending' | 'completed' } : task
+        ));
+      }
+      
+      closeContextMenu();
+    } catch (error) {
+      console.error('Error updating status:', error);
+    }
+  };
+
   const navigateDate = (direction: 'prev' | 'next') => {
     switch (view) {
       case 'month':
@@ -186,11 +244,13 @@ export default function Calendar() {
                   {dayItems.slice(0, 3).map(item => (
                     <div 
                       key={`${item.type}-${item.id}`} 
-                      className={`calendar-item ${item.type} priority-${item.priority}`}
+                      className={`calendar-item ${item.type} priority-${item.priority} status-${item.status}`}
                       title={item.type === 'meeting' 
-                        ? `${item.title} - ${format(item.startTime, 'HH:mm')}`
-                        : `${item.title} - Vence: ${item.dueDate ? format(item.dueDate, 'HH:mm') : 'Sin hora'}`
+                        ? `${item.title} - ${format(item.startTime, 'HH:mm')} (${item.status === 'pending' ? 'Pendiente' : item.status === 'completed' ? 'Completada' : 'Cancelada'})`
+                        : `${item.title} - Vence: ${item.dueDate ? format(item.dueDate, 'HH:mm') : 'Sin hora'} (${item.status === 'pending' ? 'Pendiente' : 'Completada'})`
                       }
+                      onClick={(e) => handleItemClick(e, item)}
+                      onContextMenu={(e) => handleItemRightClick(e, item)}
                     >
                       <span className="item-time">
                         {item.type === 'meeting' 
@@ -200,6 +260,9 @@ export default function Calendar() {
                       </span>
                       <span className="item-title">
                         {item.type === 'task' ? '📋 ' : '📅 '}{item.title}
+                      </span>
+                      <span className="item-status">
+                        {item.status === 'completed' ? '✅' : item.status === 'cancelled' ? '❌' : '⏳'}
                       </span>
                     </div>
                   ))}
@@ -246,13 +309,18 @@ export default function Calendar() {
                 {dayItems.map(item => (
                   <div 
                     key={`${item.type}-${item.id}`} 
-                    className={`week-item ${item.type} priority-${item.priority}`}
+                    className={`week-item ${item.type} priority-${item.priority} status-${item.status}`}
+                    onClick={(e) => handleItemClick(e, item)}
+                    onContextMenu={(e) => handleItemRightClick(e, item)}
                   >
                     <div className="item-time">
                       {item.type === 'meeting' 
                         ? `${format(item.startTime, 'HH:mm')} - ${format(item.endTime, 'HH:mm')}`
                         : item.dueDate ? format(item.dueDate, 'HH:mm') : 'Todo el día'
                       }
+                      <span className="item-status-icon">
+                        {item.status === 'completed' ? '✅' : item.status === 'cancelled' ? '❌' : '⏳'}
+                      </span>
                     </div>
                     <div className="item-title">
                       {item.type === 'task' ? '📋 ' : '📅 '}{item.title}
@@ -291,7 +359,7 @@ export default function Calendar() {
             </div>
           ) : (
             dayItems.map(item => (
-              <div key={`${item.type}-${item.id}`} className={`day-item-card ${item.type} priority-${item.priority}`}>
+              <div key={`${item.type}-${item.id}`} className={`day-item-card ${item.type} priority-${item.priority} status-${item.status}`}>
                 <div className="item-time-block">
                   <div className="item-type-icon">
                     {item.type === 'task' ? '📋' : '📅'}
@@ -335,6 +403,46 @@ export default function Calendar() {
                         {item.status === 'pending' ? 'Pendiente' : 'Completada'}
                       </div>
                     </>
+                  )}
+                </div>
+                <div className="item-actions">
+                  {item.status === 'pending' && (
+                    <>
+                      <button 
+                        onClick={() => {
+                          setSelectedItem(item);
+                          updateItemStatus('completed');
+                        }}
+                        className="btn-success"
+                        title="Marcar como completada"
+                      >
+                        ✅ Completar
+                      </button>
+                      {item.type === 'meeting' && (
+                        <button 
+                          onClick={() => {
+                            setSelectedItem(item);
+                            updateItemStatus('cancelled');
+                          }}
+                          className="btn-danger"
+                          title="Cancelar reunión"
+                        >
+                          ❌ Cancelar
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {item.status !== 'pending' && (
+                    <button 
+                      onClick={() => {
+                        setSelectedItem(item);
+                        updateItemStatus('pending');
+                      }}
+                      className="btn-secondary"
+                      title="Reactivar"
+                    >
+                      🔄 Reactivar
+                    </button>
                   )}
                 </div>
               </div>
@@ -397,7 +505,7 @@ export default function Calendar() {
         </div>
       </div>
 
-      <div className="calendar-content">
+      <div className="calendar-content" onClick={closeContextMenu}>
         {view === 'month' && renderMonthView()}
         {view === 'week' && renderWeekView()}
         {view === 'day' && renderDayView()}
@@ -416,6 +524,62 @@ export default function Calendar() {
             loadData(); // Recargar datos después de crear la reunión
           }}
         />
+      )}
+
+      {showContextMenu && selectedItem && (
+        <div 
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            top: contextMenuPosition.y,
+            left: contextMenuPosition.x,
+            zIndex: 1001
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="context-menu-header">
+            <strong>{selectedItem.title}</strong>
+            <span className="current-status">
+              {selectedItem.status === 'pending' ? '⏳ Pendiente' : 
+               selectedItem.status === 'completed' ? '✅ Completada' : '❌ Cancelada'}
+            </span>
+          </div>
+          
+          {selectedItem.status === 'pending' && (
+            <>
+              <button 
+                onClick={() => updateItemStatus('completed')}
+                className="context-menu-item success"
+              >
+                ✅ Marcar como completada
+              </button>
+              {selectedItem.type === 'meeting' && (
+                <button 
+                  onClick={() => updateItemStatus('cancelled')}
+                  className="context-menu-item danger"
+                >
+                  ❌ Cancelar reunión
+                </button>
+              )}
+            </>
+          )}
+          
+          {selectedItem.status !== 'pending' && (
+            <button 
+              onClick={() => updateItemStatus('pending')}
+              className="context-menu-item secondary"
+            >
+              🔄 Reactivar
+            </button>
+          )}
+          
+          <button 
+            onClick={closeContextMenu}
+            className="context-menu-item cancel"
+          >
+            Cerrar
+          </button>
+        </div>
       )}
     </div>
   );
