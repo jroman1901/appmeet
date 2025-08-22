@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, or, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, or, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { Meeting, User } from '../types';
@@ -159,20 +159,45 @@ export default function MeetingsList() {
         return user ? user.email : '';
       }).filter(email => email);
       
-      const meetingData = {
+      const meetingData: any = {
         title,
         description,
         clientName,
-        clientEmail: clientEmail || undefined,
-        clientPhone: clientPhone || undefined,
         startTime: startDateTime,
         endTime: endDateTime,
         priority,
-        notes: notes || undefined,
-        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
         isPublic: isPublic,
         updatedAt: new Date()
       };
+
+      // Manejar campos opcionales: agregar si tienen valor, eliminar si están vacíos
+      if (clientEmail && clientEmail.trim()) {
+        meetingData.clientEmail = clientEmail.trim();
+      } else if (editingMeeting?.clientEmail) {
+        // Si había email antes pero ahora está vacío, eliminarlo
+        meetingData.clientEmail = deleteField();
+      }
+
+      if (clientPhone && clientPhone.trim()) {
+        meetingData.clientPhone = clientPhone.trim();
+      } else if (editingMeeting?.clientPhone) {
+        // Si había teléfono antes pero ahora está vacío, eliminarlo
+        meetingData.clientPhone = deleteField();
+      }
+
+      if (notes && notes.trim()) {
+        meetingData.notes = notes.trim();
+      } else if (editingMeeting?.notes) {
+        // Si había notas antes pero ahora está vacío, eliminarlas
+        meetingData.notes = deleteField();
+      }
+
+      if (sharedWithEmails.length > 0) {
+        meetingData.sharedWith = sharedWithEmails;
+      } else if (editingMeeting?.sharedWith) {
+        // Si había usuarios compartidos antes pero ahora no hay, eliminar el campo
+        meetingData.sharedWith = deleteField();
+      }
 
       await updateDoc(doc(db, 'meetings', editingMeeting.id), meetingData);
       

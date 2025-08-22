@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { Task, User } from '../types';
@@ -96,7 +96,7 @@ export default function TaskManager() {
         return user ? user.email : '';
       }).filter(email => email);
       
-      const taskData = {
+      const taskData: any = {
         title,
         description,
         dueDate: dueDate ? new Date(dueDate) : null,
@@ -104,11 +104,15 @@ export default function TaskManager() {
         category: category || null,
         status: 'pending' as const,
         createdBy: currentUser?.uid || '',
-        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
         isPublic: isPublic,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
+
+      // Solo agregar sharedWith si hay usuarios seleccionados
+      if (sharedWithEmails.length > 0) {
+        taskData.sharedWith = sharedWithEmails;
+      }
 
       await addDoc(collection(db, 'tasks'), taskData);
       
@@ -263,16 +267,28 @@ export default function TaskManager() {
         return user ? user.email : '';
       }).filter(email => email);
       
-      const taskData = {
+      const taskData: any = {
         title,
         description,
         dueDate: dueDate ? new Date(dueDate) : null,
         priority,
-        category: category || null,
-        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
         isPublic: isPublic,
         updatedAt: new Date()
       };
+
+      // Manejar categoria: agregar si tiene valor, eliminar si está vacía
+      if (category && category.trim()) {
+        taskData.category = category.trim();
+      } else if (editingTask?.category) {
+        taskData.category = deleteField();
+      }
+
+      // Manejar sharedWith: agregar si hay usuarios, eliminar si no hay
+      if (sharedWithEmails.length > 0) {
+        taskData.sharedWith = sharedWithEmails;
+      } else if (editingTask?.sharedWith) {
+        taskData.sharedWith = deleteField();
+      }
 
       await updateDoc(doc(db, 'tasks', editingTask.id), taskData);
       

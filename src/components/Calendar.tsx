@@ -667,23 +667,29 @@ function QuickMeetingModal({
         return user ? user.email : '';
       }).filter(email => email);
 
-      await addDoc(collection(db, 'meetings'), {
+      const meetingData: any = {
         title,
         description: '',
         clientName,
-        clientEmail: clientEmail || undefined,
-        clientPhone: undefined,
         startTime: startDateTime,
         endTime: endDateTime,
         status: 'pending',
         priority,
-        notes: undefined,
         createdBy: currentUser.uid,
-        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
         isPublic: isPublic,
         createdAt: new Date(),
         updatedAt: new Date()
-      });
+      };
+
+      // Solo agregar campos opcionales si tienen valor
+      if (clientEmail) {
+        meetingData.clientEmail = clientEmail;
+      }
+      if (sharedWithEmails.length > 0) {
+        meetingData.sharedWith = sharedWithEmails;
+      }
+
+      await addDoc(collection(db, 'meetings'), meetingData);
 
       onSuccess();
     } catch (error: any) {

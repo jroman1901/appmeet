@@ -71,21 +71,31 @@ export default function MeetingScheduler() {
         return user ? user.email : '';
       }).filter(email => email);
 
-      const meetingData: Partial<Meeting> = {
+      const meetingData: any = {
         title,
         description,
         clientName,
-        clientEmail: clientEmail || undefined,
-        clientPhone: clientPhone || undefined,
         startTime: startDateTime,
         endTime: endDateTime,
         status: 'pending',
         priority,
-        notes: notes || undefined,
         createdBy: currentUser?.uid || '',
-        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
         isPublic: isPublic
       };
+
+      // Solo agregar campos opcionales si tienen valor
+      if (clientEmail) {
+        meetingData.clientEmail = clientEmail;
+      }
+      if (clientPhone) {
+        meetingData.clientPhone = clientPhone;
+      }
+      if (notes) {
+        meetingData.notes = notes;
+      }
+      if (sharedWithEmails.length > 0) {
+        meetingData.sharedWith = sharedWithEmails;
+      }
 
       await firebaseService.createMeeting(meetingData);
 
