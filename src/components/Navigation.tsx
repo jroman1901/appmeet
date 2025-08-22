@@ -27,7 +27,8 @@ export default function Navigation() {
   return (
     <nav className="navigation">
       <div className="nav-brand">
-        <h3>Agenda de Reuniones</h3>
+        <h3>APIORIENTE</h3>
+        <span className="nav-subtitle">Sistema de Reuniones y Tareas</span>
       </div>
       <ul className="nav-links">
         <li>

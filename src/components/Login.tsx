@@ -28,6 +28,10 @@ export default function Login() {
   return (
     <div className="auth-container">
       <div className="auth-card">
+        <div className="company-branding">
+          <h1 className="company-name">APIORIENTE</h1>
+          <p className="system-description">Sistema de Reuniones y Tareas</p>
+        </div>
         <h2>Iniciar Sesión</h2>
         {error && <div className="error">{error}</div>}
         <form onSubmit={handleSubmit}>
