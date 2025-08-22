@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,7 +6,55 @@ import { Task, User } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-export default function TaskManager() {
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+class TaskManagerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('TaskManager Error Boundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-boundary">
+          <h2>Algo salió mal con el gestor de tareas</h2>
+          <p>Se ha producido un error inesperado. Por favor, recarga la página.</p>
+          <details style={{ whiteSpace: 'pre-wrap', marginTop: '10px' }}>
+            <summary>Detalles del error (para desarrolladores)</summary>
+            {this.state.error && this.state.error.toString()}
+          </details>
+          <button 
+            onClick={() => this.setState({ hasError: false })}
+            className="btn-primary"
+            style={{ marginTop: '10px' }}
+          >
+            Intentar de nuevo
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function TaskManager() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -86,35 +134,73 @@ export default function TaskManager() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) {
+      setError('Usuario no autenticado');
+      return;
+    }
+
     setSubmitting(true);
     setError('');
 
     try {
-      // Convertir IDs de usuarios a emails
-      const sharedWithEmails = selectedUsers.map(userId => {
-        const user = users.find(u => u.id === userId);
-        return user ? user.email : '';
-      }).filter(email => email);
+      // Validaciones básicas
+      if (!title.trim()) {
+        setError('El título es requerido');
+        setSubmitting(false);
+        return;
+      }
+
+      // Convertir IDs de usuarios a emails con manejo de errores mejorado
+      const sharedWithEmails = selectedUsers
+        .map(userId => {
+          try {
+            if (!userId || typeof userId !== 'string') {
+              console.warn('Invalid userId:', userId);
+              return '';
+            }
+            const user = users.find(u => u && u.id === userId);
+            return user && user.email ? user.email : '';
+          } catch (e) {
+            console.warn('Error finding user:', userId, e);
+            return '';
+          }
+        })
+        .filter(email => email && typeof email === 'string' && email.trim());
       
       const taskData: any = {
-        title,
-        description,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        title: title.trim(),
+        description: description.trim(),
         priority,
-        category: category || null,
         status: 'pending' as const,
-        createdBy: currentUser?.uid || '',
+        createdBy: currentUser.uid,
         isPublic: isPublic,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
 
-      // Solo agregar sharedWith si hay usuarios seleccionados
+      // Solo agregar campos opcionales si tienen valor válido
+      if (dueDate && dueDate.trim()) {
+        try {
+          const dueDateObj = new Date(dueDate);
+          if (!isNaN(dueDateObj.getTime())) {
+            taskData.dueDate = dueDateObj;
+          }
+        } catch (e) {
+          console.warn('Invalid date:', dueDate, e);
+        }
+      }
+      
+      if (category && category.trim()) {
+        taskData.category = category.trim();
+      }
+
       if (sharedWithEmails.length > 0) {
         taskData.sharedWith = sharedWithEmails;
       }
 
+      console.log('Creating task with data:', taskData);
       await addDoc(collection(db, 'tasks'), taskData);
+      console.log('Task created successfully');
       
       // Limpiar formulario
       setTitle('');
@@ -128,10 +214,10 @@ export default function TaskManager() {
       
     } catch (error: any) {
       console.error('Error creating task:', error);
-      setError('Error al crear la tarea: ' + error.message);
+      setError('Error al crear la tarea: ' + (error.message || 'Error desconocido'));
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   };
 
   const updateTaskStatus = async (taskId: string, status: 'pending' | 'completed') => {
@@ -141,7 +227,7 @@ export default function TaskManager() {
       
       await updateDoc(doc(db, 'tasks', taskId), {
         status,
-        updatedAt: new Date()
+        updatedAt: serverTimestamp()
       });
       
       setTimeout(() => {
@@ -187,7 +273,7 @@ export default function TaskManager() {
       
       await updateDoc(doc(db, 'tasks', taskId), {
         sharedWith: [...currentShared, shareWithEmail],
-        updatedAt: new Date()
+        updatedAt: serverTimestamp()
       });
       
       setShowShareModal(null);
@@ -208,7 +294,7 @@ export default function TaskManager() {
       
       await updateDoc(doc(db, 'tasks', taskId), {
         sharedWith: newShared.length > 0 ? newShared : undefined,
-        updatedAt: new Date()
+        updatedAt: serverTimestamp()
       });
       
     } catch (error) {
@@ -225,7 +311,7 @@ export default function TaskManager() {
       
       await updateDoc(doc(db, 'tasks', taskId), {
         isPublic: !task.isPublic,
-        updatedAt: new Date()
+        updatedAt: serverTimestamp()
       });
       
     } catch (error) {
@@ -238,7 +324,7 @@ export default function TaskManager() {
     setEditingTask(task);
     setTitle(task.title);
     setDescription(task.description);
-    setDueDate(task.dueDate ? format(task.dueDate, 'yyyy-MM-dd') : '');
+    setDueDate(task.dueDate && task.dueDate instanceof Date ? format(task.dueDate, 'yyyy-MM-dd') : '');
     setPriority(task.priority);
     setCategory(task.category || '');
     
@@ -255,26 +341,61 @@ export default function TaskManager() {
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTask || !currentUser) return;
+    if (!editingTask || !currentUser) {
+      setError('No hay tarea para editar o usuario no autenticado');
+      setSubmitting(false);
+      return;
+    }
 
     setSubmitting(true);
     setError('');
 
     try {
-      // Convertir IDs de usuarios a emails
-      const sharedWithEmails = selectedUsers.map(userId => {
-        const user = users.find(u => u.id === userId);
-        return user ? user.email : '';
-      }).filter(email => email);
+      // Validaciones básicas
+      if (!title.trim()) {
+        setError('El título es requerido');
+        setSubmitting(false);
+        return;
+      }
+
+      // Convertir IDs de usuarios a emails con manejo de errores mejorado
+      const sharedWithEmails = selectedUsers
+        .map(userId => {
+          try {
+            if (!userId || typeof userId !== 'string') {
+              console.warn('Invalid userId:', userId);
+              return '';
+            }
+            const user = users.find(u => u && u.id === userId);
+            return user && user.email ? user.email : '';
+          } catch (e) {
+            console.warn('Error finding user:', userId, e);
+            return '';
+          }
+        })
+        .filter(email => email && typeof email === 'string' && email.trim());
       
       const taskData: any = {
-        title,
-        description,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        title: title.trim(),
+        description: description.trim(),
         priority,
         isPublic: isPublic,
-        updatedAt: new Date()
+        updatedAt: serverTimestamp()
       };
+
+      // Manejar dueDate: agregar si tiene valor válido, eliminar si está vacía
+      if (dueDate && dueDate.trim()) {
+        try {
+          const dueDateObj = new Date(dueDate);
+          if (!isNaN(dueDateObj.getTime())) {
+            taskData.dueDate = dueDateObj;
+          }
+        } catch (e) {
+          console.warn('Invalid date:', dueDate, e);
+        }
+      } else if (editingTask?.dueDate) {
+        taskData.dueDate = deleteField();
+      }
 
       // Manejar categoria: agregar si tiene valor, eliminar si está vacía
       if (category && category.trim()) {
@@ -290,7 +411,9 @@ export default function TaskManager() {
         taskData.sharedWith = deleteField();
       }
 
+      console.log('Updating task with data:', taskData);
       await updateDoc(doc(db, 'tasks', editingTask.id), taskData);
+      console.log('Task updated successfully');
       
       // Limpiar formulario y cerrar modal
       setTitle('');
@@ -305,10 +428,10 @@ export default function TaskManager() {
       
     } catch (error: any) {
       console.error('Error updating task:', error);
-      setError('Error al actualizar la tarea: ' + error.message);
+      setError('Error al actualizar la tarea: ' + (error.message || 'Error desconocido'));
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   };
 
   const cancelEditing = () => {
@@ -503,11 +626,11 @@ export default function TaskManager() {
                 )}
                 {task.dueDate && (
                   <p className="due-date">
-                    <strong>Vence:</strong> {format(task.dueDate, 'dd/MM/yyyy', { locale: es })}
+                    <strong>Vence:</strong> {task.dueDate instanceof Date ? format(task.dueDate, 'dd/MM/yyyy', { locale: es }) : 'Fecha inválida'}
                   </p>
                 )}
                 <p className="created-date">
-                  Creada: {format(task.createdAt, 'dd/MM/yyyy', { locale: es })}
+                  Creada: {task.createdAt instanceof Date ? format(task.createdAt, 'dd/MM/yyyy', { locale: es }) : 'Fecha inválida'}
                   {task.createdBy !== currentUser?.uid && (
                     <span className="shared-indicator"> (Compartida)</span>
                   )}
@@ -891,5 +1014,13 @@ function ShareTaskModal({
         </div>
       </div>
     </div>
+  );
+}
+
+export default function TaskManagerWithErrorBoundary() {
+  return (
+    <TaskManagerErrorBoundary>
+      <TaskManager />
+    </TaskManagerErrorBoundary>
   );
 }
