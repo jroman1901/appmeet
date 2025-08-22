@@ -14,6 +14,28 @@ import FirstAdminSetup from './components/FirstAdminSetup';
 import Calendar from './components/Calendar';
 import './App.css';
 
+// Componente Layout que incluye Navigation y Footer
+function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="app-layout">
+      <Navigation />
+      <main className="main-content">
+        {children}
+      </main>
+      <footer className="app-footer">
+        <div className="footer-content">
+          <p>&copy; 2024 Meeting Scheduler - Sistema de gestión de reuniones y tareas</p>
+          <div className="version-info">
+            <span className="version-label">Versión:</span> 
+            <span className="version-number">v2.1.0</span>
+            <span className="version-features"> - Edición y Compartir Colaborativo</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
 function App() {
 
   return (
@@ -24,82 +46,58 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/" element={
               <PrivateRoute>
-                <div className="app-layout">
-                  <Navigation />
-                  <main className="main-content">
-                    <Navigate to="/dashboard" />
-                  </main>
-                </div>
+                <Layout>
+                  <Navigate to="/dashboard" />
+                </Layout>
               </PrivateRoute>
             } />
             <Route path="/dashboard" element={
               <PrivateRoute>
-                <div className="app-layout">
-                  <Navigation />
-                  <main className="main-content">
-                    <Dashboard />
-                  </main>
-                </div>
+                <Layout>
+                  <Dashboard />
+                </Layout>
               </PrivateRoute>
             } />
             <Route path="/schedule" element={
               <PrivateRoute>
-                <div className="app-layout">
-                  <Navigation />
-                  <main className="main-content">
-                    <MeetingScheduler />
-                  </main>
-                </div>
+                <Layout>
+                  <MeetingScheduler />
+                </Layout>
               </PrivateRoute>
             } />
             <Route path="/meetings" element={
               <PrivateRoute>
-                <div className="app-layout">
-                  <Navigation />
-                  <main className="main-content">
-                    <MeetingsList />
-                  </main>
-                </div>
+                <Layout>
+                  <MeetingsList />
+                </Layout>
               </PrivateRoute>
             } />
             <Route path="/tasks" element={
               <PrivateRoute>
-                <div className="app-layout">
-                  <Navigation />
-                  <main className="main-content">
-                    <TaskManager />
-                  </main>
-                </div>
+                <Layout>
+                  <TaskManager />
+                </Layout>
               </PrivateRoute>
             } />
             <Route path="/calendar" element={
               <PrivateRoute>
-                <div className="app-layout">
-                  <Navigation />
-                  <main className="main-content">
-                    <Calendar />
-                  </main>
-                </div>
+                <Layout>
+                  <Calendar />
+                </Layout>
               </PrivateRoute>
             } />
             <Route path="/admin" element={
               <PrivateRoute>
-                <div className="app-layout">
-                  <Navigation />
-                  <main className="main-content">
-                    <AdminPanel />
-                  </main>
-                </div>
+                <Layout>
+                  <AdminPanel />
+                </Layout>
               </PrivateRoute>
             } />
             <Route path="/setup-admin" element={
               <PrivateRoute>
-                <div className="app-layout">
-                  <Navigation />
-                  <main className="main-content">
-                    <FirstAdminSetup />
-                  </main>
-                </div>
+                <Layout>
+                  <FirstAdminSetup />
+                </Layout>
               </PrivateRoute>
             } />
           </Routes>

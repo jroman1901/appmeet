@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, orderBy, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, addDoc, doc, updateDoc, or } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
-import { Meeting, Task } from '../types';
+import { Meeting, Task, User } from '../types';
 import { 
   format, 
   startOfMonth, 
@@ -85,11 +85,14 @@ export default function Calendar() {
         updatedAt: doc.data().updatedAt?.toDate()
       })) as Meeting[];
 
-      // Cargar tareas con fechas de vencimiento
+      // Cargar tareas con fechas de vencimiento (propias, compartidas y públicas)
       const tasksQuery = query(
         collection(db, 'tasks'),
-        where('createdBy', '==', currentUser.uid),
-        orderBy('createdAt', 'desc')
+        or(
+          where('createdBy', '==', currentUser.uid),
+          where('sharedWith', 'array-contains', currentUser.uid),
+          where('isPublic', '==', true)
+        )
       );
 
       const tasksSnapshot = await getDocs(tasksQuery);
@@ -246,8 +249,8 @@ export default function Calendar() {
                       key={`${item.type}-${item.id}`} 
                       className={`calendar-item ${item.type} priority-${item.priority} status-${item.status}`}
                       title={item.type === 'meeting' 
-                        ? `${item.title} - ${format(item.startTime, 'HH:mm')} (${item.status === 'pending' ? 'Pendiente' : item.status === 'completed' ? 'Completada' : 'Cancelada'})`
-                        : `${item.title} - Vence: ${item.dueDate ? format(item.dueDate, 'HH:mm') : 'Sin hora'} (${item.status === 'pending' ? 'Pendiente' : 'Completada'})`
+                        ? `${item.title} - ${format(item.startTime, 'HH:mm')} (${item.status === 'pending' ? 'Pendiente' : item.status === 'completed' ? 'Completada' : 'Cancelada'})${item.createdBy !== currentUser?.uid ? ' - Compartida' : ''}`
+                        : `${item.title} - Vence: ${item.dueDate ? format(item.dueDate, 'HH:mm') : 'Sin hora'} (${item.status === 'pending' ? 'Pendiente' : 'Completada'})${item.createdBy !== currentUser?.uid ? ' - Compartida' : ''}`
                       }
                       onClick={(e) => handleItemClick(e, item)}
                       onContextMenu={(e) => handleItemRightClick(e, item)}
@@ -260,6 +263,7 @@ export default function Calendar() {
                       </span>
                       <span className="item-title">
                         {item.type === 'task' ? '📋 ' : '📅 '}{item.title}
+                        {item.createdBy !== currentUser?.uid && ' 👥'}
                       </span>
                       <span className="item-status">
                         {item.status === 'completed' ? '✅' : item.status === 'cancelled' ? '❌' : '⏳'}
@@ -324,6 +328,7 @@ export default function Calendar() {
                     </div>
                     <div className="item-title">
                       {item.type === 'task' ? '📋 ' : '📅 '}{item.title}
+                      {item.createdBy !== currentUser?.uid && ' 👥'}
                     </div>
                     {item.type === 'meeting' && (
                       <div className="item-client">{item.clientName}</div>
@@ -377,11 +382,14 @@ export default function Calendar() {
                   )}
                 </div>
                 <div className="item-details">
-                  <h4>{item.title}</h4>
+                  <h4>
+                    {item.title}
+                    {item.createdBy !== currentUser?.uid && ' 👥'}
+                  </h4>
                   {item.type === 'meeting' ? (
                     <>
                       <p><strong>Cliente:</strong> {item.clientName}</p>
-                      <p><strong>Email:</strong> {item.clientEmail}</p>
+                      {item.clientEmail && <p><strong>Email:</strong> {item.clientEmail}</p>}
                       {item.clientPhone && (
                         <p><strong>Teléfono:</strong> {item.clientPhone}</p>
                       )}
@@ -601,9 +609,35 @@ function QuickMeetingModal({
   const [startTime, setStartTime] = useState(format(selectedDate, 'HH:mm'));
   const [endTime, setEndTime] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [isPublic, setIsPublic] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { currentUser } = useAuth();
+
+  // Cargar usuarios disponibles
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        const usersData = usersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate()
+        })) as User[];
+        
+        // Filtrar el usuario actual
+        setUsers(usersData.filter(user => user.id !== currentUser?.uid));
+      } catch (error) {
+        console.error('Error loading users:', error);
+      }
+    };
+    
+    if (currentUser) {
+      loadUsers();
+    }
+  }, [currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -627,18 +661,26 @@ function QuickMeetingModal({
         return;
       }
 
+      // Convertir IDs de usuarios a emails
+      const sharedWithEmails = selectedUsers.map(userId => {
+        const user = users.find(u => u.id === userId);
+        return user ? user.email : '';
+      }).filter(email => email);
+
       await addDoc(collection(db, 'meetings'), {
         title,
         description: '',
         clientName,
-        clientEmail,
-        clientPhone: '',
+        clientEmail: clientEmail || undefined,
+        clientPhone: undefined,
         startTime: startDateTime,
         endTime: endDateTime,
         status: 'pending',
         priority,
-        notes: '',
+        notes: undefined,
         createdBy: currentUser.uid,
+        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
+        isPublic: isPublic,
         createdAt: new Date(),
         updatedAt: new Date()
       });
@@ -712,13 +754,12 @@ function QuickMeetingModal({
             </div>
 
             <div className="form-group">
-              <label htmlFor="clientEmail">Email del cliente:</label>
+              <label htmlFor="clientEmail">Email del cliente (opcional):</label>
               <input
                 id="clientEmail"
                 type="email"
                 value={clientEmail}
                 onChange={(e) => setClientEmail(e.target.value)}
-                required
               />
             </div>
 
@@ -735,6 +776,29 @@ function QuickMeetingModal({
               </select>
             </div>
 
+            <div className="sharing-section">
+              <h4>Opciones de Compartir</h4>
+              
+              <UserSelector
+                users={users}
+                selectedUsers={selectedUsers}
+                onSelectionChange={setSelectedUsers}
+                label="Compartir con usuarios:"
+                helperText="Opcional: Los usuarios seleccionados podrán ver y editar esta reunión"
+              />
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={isPublic}
+                    onChange={(e) => setIsPublic(e.target.checked)}
+                  />
+                  Hacer pública (todos los usuarios pueden verla)
+                </label>
+              </div>
+            </div>
+
             <div className="modal-actions">
               <button type="button" onClick={onClose} className="btn-secondary">
                 Cancelar
@@ -746,6 +810,82 @@ function QuickMeetingModal({
           </form>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Componente selector de usuarios reutilizable
+function UserSelector({ 
+  users, 
+  selectedUsers, 
+  onSelectionChange, 
+  label,
+  helperText 
+}: { 
+  users: User[];
+  selectedUsers: string[];
+  onSelectionChange: (users: string[]) => void;
+  label: string;
+  helperText?: string;
+}) {
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const toggleUser = (userId: string) => {
+    if (selectedUsers.includes(userId)) {
+      onSelectionChange(selectedUsers.filter(id => id !== userId));
+    } else {
+      onSelectionChange([...selectedUsers, userId]);
+    }
+  };
+
+  const getSelectedUserNames = () => {
+    return selectedUsers.map(userId => {
+      const user = users.find(u => u.id === userId);
+      return user ? user.email : '';
+    }).filter(email => email);
+  };
+
+  return (
+    <div className="form-group">
+      <label>{label}</label>
+      <div className="user-selector">
+        <div 
+          className="selector-display" 
+          onClick={() => setShowDropdown(!showDropdown)}
+        >
+          {selectedUsers.length > 0 
+            ? `${selectedUsers.length} usuario${selectedUsers.length > 1 ? 's' : ''} seleccionado${selectedUsers.length > 1 ? 's' : ''}`
+            : 'Seleccionar usuarios...'
+          }
+          <span className="dropdown-arrow">{showDropdown ? '▲' : '▼'}</span>
+        </div>
+        
+        {showDropdown && (
+          <div className="selector-dropdown">
+            {users.length > 0 ? users.map(user => (
+              <div key={user.id} className="selector-option">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedUsers.includes(user.id)}
+                    onChange={() => toggleUser(user.id)}
+                  />
+                  {user.email}
+                </label>
+              </div>
+            )) : (
+              <div className="no-users">No hay usuarios disponibles</div>
+            )}
+          </div>
+        )}
+        
+        {selectedUsers.length > 0 && (
+          <div className="selected-users">
+            <strong>Seleccionados:</strong> {getSelectedUserNames().join(', ')}
+          </div>
+        )}
+      </div>
+      {helperText && <small className="help-text">{helperText}</small>}
     </div>
   );
 }

@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { FirebaseService } from '../services/firebaseService';
-import { Meeting } from '../types';
+import { Meeting, User } from '../types';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 export default function MeetingScheduler() {
   const [title, setTitle] = useState('');
@@ -14,12 +16,38 @@ export default function MeetingScheduler() {
   const [endTime, setEndTime] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [notes, setNotes] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [isPublic, setIsPublic] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
   const { currentUser } = useAuth();
   const firebaseService = FirebaseService.getInstance();
+
+  // Cargar usuarios disponibles
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        const usersData = usersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate()
+        })) as User[];
+        
+        // Filtrar el usuario actual
+        setUsers(usersData.filter(user => user.id !== currentUser?.uid));
+      } catch (error) {
+        console.error('Error loading users:', error);
+      }
+    };
+    
+    if (currentUser) {
+      loadUsers();
+    }
+  }, [currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,18 +65,26 @@ export default function MeetingScheduler() {
         return;
       }
 
+      // Convertir IDs de usuarios a emails
+      const sharedWithEmails = selectedUsers.map(userId => {
+        const user = users.find(u => u.id === userId);
+        return user ? user.email : '';
+      }).filter(email => email);
+
       const meetingData: Partial<Meeting> = {
         title,
         description,
         clientName,
-        clientEmail,
-        clientPhone,
+        clientEmail: clientEmail || undefined,
+        clientPhone: clientPhone || undefined,
         startTime: startDateTime,
         endTime: endDateTime,
         status: 'pending',
         priority,
-        notes,
-        createdBy: currentUser?.uid || ''
+        notes: notes || undefined,
+        createdBy: currentUser?.uid || '',
+        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
+        isPublic: isPublic
       };
 
       await firebaseService.createMeeting(meetingData);
@@ -66,6 +102,8 @@ export default function MeetingScheduler() {
       setEndTime('');
       setPriority('medium');
       setNotes('');
+      setSelectedUsers([]);
+      setIsPublic(false);
     } catch (error: any) {
       console.error('Error scheduling meeting:', error);
       setError(error.message || 'Error al programar la reunión');
@@ -117,13 +155,12 @@ export default function MeetingScheduler() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="clientEmail">Email del cliente:</label>
+            <label htmlFor="clientEmail">Email del cliente (opcional):</label>
             <input
               id="clientEmail"
               type="email"
               value={clientEmail}
               onChange={(e) => setClientEmail(e.target.value)}
-              required
             />
           </div>
           <div className="form-group">
@@ -198,6 +235,29 @@ export default function MeetingScheduler() {
           />
         </div>
 
+        <div className="sharing-section">
+          <h4>Opciones de Compartir</h4>
+          
+          <UserSelector
+            users={users}
+            selectedUsers={selectedUsers}
+            onSelectionChange={setSelectedUsers}
+            label="Compartir con usuarios:"
+            helperText="Opcional: Los usuarios seleccionados podrán ver y editar esta reunión"
+          />
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+              />
+              Hacer pública (todos los usuarios pueden verla)
+            </label>
+          </div>
+        </div>
+
         <button 
           type="submit" 
           disabled={loading}
@@ -206,6 +266,82 @@ export default function MeetingScheduler() {
           {loading ? 'Programando...' : 'Programar Reunión'}
         </button>
       </form>
+    </div>
+  );
+}
+
+// Componente selector de usuarios reutilizable
+function UserSelector({ 
+  users, 
+  selectedUsers, 
+  onSelectionChange, 
+  label,
+  helperText 
+}: { 
+  users: User[];
+  selectedUsers: string[];
+  onSelectionChange: (users: string[]) => void;
+  label: string;
+  helperText?: string;
+}) {
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const toggleUser = (userId: string) => {
+    if (selectedUsers.includes(userId)) {
+      onSelectionChange(selectedUsers.filter(id => id !== userId));
+    } else {
+      onSelectionChange([...selectedUsers, userId]);
+    }
+  };
+
+  const getSelectedUserNames = () => {
+    return selectedUsers.map(userId => {
+      const user = users.find(u => u.id === userId);
+      return user ? user.email : '';
+    }).filter(email => email);
+  };
+
+  return (
+    <div className="form-group">
+      <label>{label}</label>
+      <div className="user-selector">
+        <div 
+          className="selector-display" 
+          onClick={() => setShowDropdown(!showDropdown)}
+        >
+          {selectedUsers.length > 0 
+            ? `${selectedUsers.length} usuario${selectedUsers.length > 1 ? 's' : ''} seleccionado${selectedUsers.length > 1 ? 's' : ''}`
+            : 'Seleccionar usuarios...'
+          }
+          <span className="dropdown-arrow">{showDropdown ? '▲' : '▼'}</span>
+        </div>
+        
+        {showDropdown && (
+          <div className="selector-dropdown">
+            {users.length > 0 ? users.map(user => (
+              <div key={user.id} className="selector-option">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedUsers.includes(user.id)}
+                    onChange={() => toggleUser(user.id)}
+                  />
+                  {user.email}
+                </label>
+              </div>
+            )) : (
+              <div className="no-users">No hay usuarios disponibles</div>
+            )}
+          </div>
+        )}
+        
+        {selectedUsers.length > 0 && (
+          <div className="selected-users">
+            <strong>Seleccionados:</strong> {getSelectedUserNames().join(', ')}
+          </div>
+        )}
+      </div>
+      {helperText && <small className="help-text">{helperText}</small>}
     </div>
   );
 }

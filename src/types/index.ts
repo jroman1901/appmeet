@@ -12,7 +12,7 @@ export interface Meeting {
   id: string;
   title: string;
   description: string;
-  clientEmail: string;
+  clientEmail?: string;
   clientName: string;
   clientPhone?: string;
   startTime: Date;
@@ -21,6 +21,8 @@ export interface Meeting {
   priority: 'low' | 'medium' | 'high';
   notes?: string;
   createdBy: string;
+  sharedWith?: string[];
+  isPublic?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +37,8 @@ export interface Task {
   category?: string;
   relatedMeetingId?: string;
   createdBy: string;
+  sharedWith?: string[];
+  isPublic?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

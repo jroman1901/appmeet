@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
-import { Task } from '../types';
+import { Task, User } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -14,19 +14,30 @@ export default function TaskManager() {
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [category, setCategory] = useState('');
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'mine' | 'shared'>('all');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState<string | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [isPublic, setIsPublic] = useState(false);
+  const [showShareModal, setShowShareModal] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
   const { currentUser } = useAuth();
 
   useEffect(() => {
     if (!currentUser) return;
 
+    // Cargar tareas del usuario y tareas compartidas con él
     const tasksQuery = query(
       collection(db, 'tasks'),
-      where('createdBy', '==', currentUser.uid)
+      or(
+        where('createdBy', '==', currentUser.uid),
+        where('sharedWith', 'array-contains', currentUser.uid),
+        where('isPublic', '==', true)
+      )
     );
 
     const unsubscribe = onSnapshot(tasksQuery, (snapshot) => {
@@ -49,12 +60,42 @@ export default function TaskManager() {
     return () => unsubscribe();
   }, [currentUser]);
 
+  // Cargar usuarios disponibles
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        const usersData = usersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate()
+        })) as User[];
+        
+        // Filtrar el usuario actual
+        setUsers(usersData.filter(user => user.id !== currentUser?.uid));
+      } catch (error) {
+        console.error('Error loading users:', error);
+      }
+    };
+    
+    if (currentUser) {
+      loadUsers();
+    }
+  }, [currentUser]);
+
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError('');
 
     try {
+      // Convertir IDs de usuarios a emails
+      const sharedWithEmails = selectedUsers.map(userId => {
+        const user = users.find(u => u.id === userId);
+        return user ? user.email : '';
+      }).filter(email => email);
+      
       const taskData = {
         title,
         description,
@@ -63,6 +104,8 @@ export default function TaskManager() {
         category: category || null,
         status: 'pending' as const,
         createdBy: currentUser?.uid || '',
+        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
+        isPublic: isPublic,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
@@ -75,6 +118,8 @@ export default function TaskManager() {
       setDueDate('');
       setPriority('medium');
       setCategory('');
+      setSelectedUsers([]);
+      setIsPublic(false);
       setShowForm(false);
       
     } catch (error: any) {
@@ -124,12 +169,155 @@ export default function TaskManager() {
     }
   };
 
+  const shareTask = async (taskId: string, shareWithEmail: string) => {
+    try {
+      setError('');
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      const currentShared = task.sharedWith || [];
+      if (currentShared.includes(shareWithEmail)) {
+        setError('Esta tarea ya está compartida con este usuario');
+        return;
+      }
+      
+      await updateDoc(doc(db, 'tasks', taskId), {
+        sharedWith: [...currentShared, shareWithEmail],
+        updatedAt: new Date()
+      });
+      
+      setShowShareModal(null);
+    } catch (error) {
+      console.error('Error sharing task:', error);
+      setError('Error al compartir la tarea');
+    }
+  };
+
+  const unshareTask = async (taskId: string, unshareWithEmail: string) => {
+    try {
+      setError('');
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      const currentShared = task.sharedWith || [];
+      const newShared = currentShared.filter(email => email !== unshareWithEmail);
+      
+      await updateDoc(doc(db, 'tasks', taskId), {
+        sharedWith: newShared.length > 0 ? newShared : undefined,
+        updatedAt: new Date()
+      });
+      
+    } catch (error) {
+      console.error('Error unsharing task:', error);
+      setError('Error al dejar de compartir la tarea');
+    }
+  };
+
+  const toggleTaskPublic = async (taskId: string) => {
+    try {
+      setError('');
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      await updateDoc(doc(db, 'tasks', taskId), {
+        isPublic: !task.isPublic,
+        updatedAt: new Date()
+      });
+      
+    } catch (error) {
+      console.error('Error toggling task public status:', error);
+      setError('Error al cambiar la visibilidad de la tarea');
+    }
+  };
+
+  const startEditingTask = (task: Task) => {
+    setEditingTask(task);
+    setTitle(task.title);
+    setDescription(task.description);
+    setDueDate(task.dueDate ? format(task.dueDate, 'yyyy-MM-dd') : '');
+    setPriority(task.priority);
+    setCategory(task.category || '');
+    
+    // Convertir emails a IDs de usuarios
+    const userIds = task.sharedWith ? task.sharedWith.map(email => {
+      const user = users.find(u => u.email === email);
+      return user ? user.id : '';
+    }).filter(id => id) : [];
+    setSelectedUsers(userIds);
+    
+    setIsPublic(task.isPublic || false);
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask || !currentUser) return;
+
+    setSubmitting(true);
+    setError('');
+
+    try {
+      // Convertir IDs de usuarios a emails
+      const sharedWithEmails = selectedUsers.map(userId => {
+        const user = users.find(u => u.id === userId);
+        return user ? user.email : '';
+      }).filter(email => email);
+      
+      const taskData = {
+        title,
+        description,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        priority,
+        category: category || null,
+        sharedWith: sharedWithEmails.length > 0 ? sharedWithEmails : undefined,
+        isPublic: isPublic,
+        updatedAt: new Date()
+      };
+
+      await updateDoc(doc(db, 'tasks', editingTask.id), taskData);
+      
+      // Limpiar formulario y cerrar modal
+      setTitle('');
+      setDescription('');
+      setDueDate('');
+      setPriority('medium');
+      setCategory('');
+      setSelectedUsers([]);
+      setIsPublic(false);
+      setEditingTask(null);
+      setShowEditModal(false);
+      
+    } catch (error: any) {
+      console.error('Error updating task:', error);
+      setError('Error al actualizar la tarea: ' + error.message);
+    }
+
+    setSubmitting(false);
+  };
+
+  const cancelEditing = () => {
+    setTitle('');
+    setDescription('');
+    setDueDate('');
+    setPriority('medium');
+    setCategory('');
+    setSelectedUsers([]);
+    setIsPublic(false);
+    setEditingTask(null);
+    setShowEditModal(false);
+    setError('');
+  };
+
   const getFilteredTasks = () => {
     switch (filter) {
       case 'pending':
         return tasks.filter(task => task.status === 'pending');
       case 'completed':
         return tasks.filter(task => task.status === 'completed');
+      case 'mine':
+        return tasks.filter(task => task.createdBy === currentUser?.uid);
+      case 'shared':
+        return tasks.filter(task => task.createdBy !== currentUser?.uid);
       default:
         return tasks;
     }
@@ -211,6 +399,29 @@ export default function TaskManager() {
               placeholder="Ej: Trabajo, Personal, Proyecto..."
             />
           </div>
+
+          <div className="sharing-section">
+            <h4>Opciones de Compartir</h4>
+            
+            <UserSelector
+              users={users}
+              selectedUsers={selectedUsers}
+              onSelectionChange={setSelectedUsers}
+              label="Compartir con usuarios:"
+              helperText="Opcional: Los usuarios seleccionados podrán ver y editar esta tarea"
+            />
+
+            <div className="form-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                />
+                Hacer pública (todos los usuarios pueden verla)
+              </label>
+            </div>
+          </div>
           
           <button 
             type="submit" 
@@ -228,6 +439,18 @@ export default function TaskManager() {
           onClick={() => setFilter('all')}
         >
           Todas ({tasks.length})
+        </button>
+        <button 
+          className={filter === 'mine' ? 'active' : ''}
+          onClick={() => setFilter('mine')}
+        >
+          Mías ({tasks.filter(t => t.createdBy === currentUser?.uid).length})
+        </button>
+        <button 
+          className={filter === 'shared' ? 'active' : ''}
+          onClick={() => setFilter('shared')}
+        >
+          Compartidas ({tasks.filter(t => t.createdBy !== currentUser?.uid).length})
         </button>
         <button 
           className={filter === 'pending' ? 'active' : ''}
@@ -269,7 +492,18 @@ export default function TaskManager() {
                 )}
                 <p className="created-date">
                   Creada: {format(task.createdAt, 'dd/MM/yyyy', { locale: es })}
+                  {task.createdBy !== currentUser?.uid && (
+                    <span className="shared-indicator"> (Compartida)</span>
+                  )}
                 </p>
+                {task.isPublic && (
+                  <p className="public-indicator">🌐 Pública - Visible para todos</p>
+                )}
+                {task.sharedWith && task.sharedWith.length > 0 && (
+                  <p className="shared-with">
+                    👥 Compartida con: {task.sharedWith.join(', ')}
+                  </p>
+                )}
               </div>
               
               <div className="task-actions">
@@ -302,12 +536,42 @@ export default function TaskManager() {
                     )}
                     
                     <button 
-                      onClick={() => deleteTask(task.id)}
-                      className="btn-danger"
-                      title="Eliminar tarea"
+                      onClick={() => startEditingTask(task)}
+                      className="btn-secondary"
+                      title="Editar tarea"
                     >
-                      🗑 Eliminar
+                      ✏️ Editar
                     </button>
+
+                    {task.createdBy === currentUser?.uid && (
+                      <>
+                        <button 
+                          onClick={() => setShowShareModal(task.id)}
+                          className="btn-info"
+                          title="Gestionar compartir"
+                        >
+                          👥 Compartir
+                        </button>
+                        
+                        <button 
+                          onClick={() => toggleTaskPublic(task.id)}
+                          className={task.isPublic ? "btn-warning" : "btn-info"}
+                          title={task.isPublic ? "Hacer privada" : "Hacer pública"}
+                        >
+                          {task.isPublic ? "🔒 Hacer Privada" : "🌐 Hacer Pública"}
+                        </button>
+                      </>
+                    )}
+                    
+                    {task.createdBy === currentUser?.uid && (
+                      <button 
+                        onClick={() => deleteTask(task.id)}
+                        className="btn-danger"
+                        title="Eliminar tarea"
+                      >
+                        🗑 Eliminar
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -315,6 +579,301 @@ export default function TaskManager() {
           ))}
         </div>
       )}
+
+      {showShareModal && (
+        <ShareTaskModal 
+          taskId={showShareModal}
+          task={tasks.find(t => t.id === showShareModal)!}
+          users={users}
+          onClose={() => setShowShareModal(null)}
+          onShare={shareTask}
+          onUnshare={unshareTask}
+        />
+      )}
+
+      {showEditModal && editingTask && (
+        <div className="modal-overlay" onClick={cancelEditing}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Editar Tarea</h2>
+              <button onClick={cancelEditing} className="close-btn">×</button>
+            </div>
+            <div className="modal-body">
+              {error && <div className="error">{error}</div>}
+              
+              <form onSubmit={handleEditSubmit} className="task-form">
+                <div className="form-group">
+                  <label htmlFor="editTaskTitle">Título:</label>
+                  <input
+                    id="editTaskTitle"
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="editTaskDescription">Descripción:</label>
+                  <textarea
+                    id="editTaskDescription"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="editTaskDueDate">Fecha límite (opcional):</label>
+                  <input
+                    id="editTaskDueDate"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="editTaskPriority">Prioridad:</label>
+                  <select
+                    id="editTaskPriority"
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high')}
+                    required
+                  >
+                    <option value="low">Baja</option>
+                    <option value="medium">Media</option>
+                    <option value="high">Alta</option>
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="editTaskCategory">Categoría (opcional):</label>
+                  <input
+                    id="editTaskCategory"
+                    type="text"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    placeholder="Ej: Trabajo, Personal, Proyecto..."
+                  />
+                </div>
+
+                {editingTask.createdBy === currentUser?.uid && (
+                  <div className="sharing-section">
+                    <h4>Opciones de Compartir</h4>
+                    
+                    <UserSelector
+                      users={users}
+                      selectedUsers={selectedUsers}
+                      onSelectionChange={setSelectedUsers}
+                      label="Compartir con usuarios:"
+                      helperText="Opcional: Los usuarios seleccionados podrán ver y editar esta tarea"
+                    />
+
+                    <div className="form-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={isPublic}
+                          onChange={(e) => setIsPublic(e.target.checked)}
+                        />
+                        Hacer pública (todos los usuarios pueden verla)
+                      </label>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="modal-actions">
+                  <button type="button" onClick={cancelEditing} className="btn-secondary">
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={submitting}
+                    className="btn-primary"
+                  >
+                    {submitting ? 'Actualizando...' : 'Actualizar Tarea'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Componente selector de usuarios reutilizable
+function UserSelector({ 
+  users, 
+  selectedUsers, 
+  onSelectionChange, 
+  label,
+  helperText 
+}: { 
+  users: User[];
+  selectedUsers: string[];
+  onSelectionChange: (users: string[]) => void;
+  label: string;
+  helperText?: string;
+}) {
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const toggleUser = (userId: string) => {
+    if (selectedUsers.includes(userId)) {
+      onSelectionChange(selectedUsers.filter(id => id !== userId));
+    } else {
+      onSelectionChange([...selectedUsers, userId]);
+    }
+  };
+
+  const getSelectedUserNames = () => {
+    return selectedUsers.map(userId => {
+      const user = users.find(u => u.id === userId);
+      return user ? user.email : '';
+    }).filter(email => email);
+  };
+
+  return (
+    <div className="form-group">
+      <label>{label}</label>
+      <div className="user-selector">
+        <div 
+          className="selector-display" 
+          onClick={() => setShowDropdown(!showDropdown)}
+        >
+          {selectedUsers.length > 0 
+            ? `${selectedUsers.length} usuario${selectedUsers.length > 1 ? 's' : ''} seleccionado${selectedUsers.length > 1 ? 's' : ''}`
+            : 'Seleccionar usuarios...'
+          }
+          <span className="dropdown-arrow">{showDropdown ? '▲' : '▼'}</span>
+        </div>
+        
+        {showDropdown && (
+          <div className="selector-dropdown">
+            {users.length > 0 ? users.map(user => (
+              <div key={user.id} className="selector-option">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedUsers.includes(user.id)}
+                    onChange={() => toggleUser(user.id)}
+                  />
+                  {user.email}
+                </label>
+              </div>
+            )) : (
+              <div className="no-users">No hay usuarios disponibles</div>
+            )}
+          </div>
+        )}
+        
+        {selectedUsers.length > 0 && (
+          <div className="selected-users">
+            <strong>Seleccionados:</strong> {getSelectedUserNames().join(', ')}
+          </div>
+        )}
+      </div>
+      {helperText && <small className="help-text">{helperText}</small>}
+    </div>
+  );
+}
+
+// Componente modal para gestionar el compartir de tareas
+function ShareTaskModal({ 
+  taskId, 
+  task, 
+  users,
+  onClose, 
+  onShare, 
+  onUnshare 
+}: { 
+  taskId: string;
+  task: Task;
+  users: User[];
+  onClose: () => void;
+  onShare: (taskId: string, shareWithEmail: string) => void;
+  onUnshare: (taskId: string, unshareWithEmail: string) => void;
+}) {
+  const [selectedNewUsers, setSelectedNewUsers] = useState<string[]>([]);
+  const [error, setError] = useState('');
+
+  const handleShare = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedNewUsers.length === 0) {
+      setError('Por favor selecciona al menos un usuario');
+      return;
+    }
+
+    // Compartir con todos los usuarios seleccionados
+    selectedNewUsers.forEach(userId => {
+      const user = users.find(u => u.id === userId);
+      if (user) {
+        onShare(taskId, user.email);
+      }
+    });
+    
+    setSelectedNewUsers([]);
+    setError('');
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Gestionar Compartir Tarea</h2>
+          <button onClick={onClose} className="close-btn">×</button>
+        </div>
+        <div className="modal-body">
+          <h3>"{task.title}"</h3>
+          
+          {error && <div className="error">{error}</div>}
+          
+          <form onSubmit={handleShare} className="share-form">
+            <UserSelector
+              users={users.filter(user => !(task.sharedWith || []).includes(user.email))}
+              selectedUsers={selectedNewUsers}
+              onSelectionChange={setSelectedNewUsers}
+              label="Agregar usuarios:"
+              helperText="Selecciona los usuarios con los que quieres compartir esta tarea"
+            />
+            <button type="submit" className="btn-primary" disabled={selectedNewUsers.length === 0}>
+              👥 Compartir con seleccionados
+            </button>
+          </form>
+
+          {task.sharedWith && task.sharedWith.length > 0 && (
+            <div className="shared-users-list">
+              <h4>Compartida con:</h4>
+              {task.sharedWith.map(email => (
+                <div key={email} className="shared-user-item">
+                  <span>{email}</span>
+                  <button 
+                    onClick={() => onUnshare(taskId, email)}
+                    className="btn-danger btn-sm"
+                    title="Dejar de compartir"
+                  >
+                    ✕ Quitar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(!task.sharedWith || task.sharedWith.length === 0) && (
+            <div className="no-shared-users">
+              Esta tarea no está compartida con ningún usuario.
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-secondary">
+            Cerrar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
