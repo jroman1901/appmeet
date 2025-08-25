@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, or, getDocs, deleteField } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { Meeting, User } from '../types';
@@ -41,7 +41,7 @@ export default function MeetingsList() {
       collection(db, 'meetings'),
       or(
         where('createdBy', '==', currentUser.uid),
-        where('sharedWith', 'array-contains', currentUser.uid),
+        where('sharedWith', 'array-contains', currentUser.email),
         where('isPublic', '==', true)
       )
     );
@@ -290,6 +290,25 @@ export default function MeetingsList() {
     }
   };
 
+  const deleteMeeting = async (meetingId: string) => {
+    if (!window.confirm('¿Estás seguro de que quieres eliminar esta reunión? Esta acción no se puede deshacer.')) {
+      return;
+    }
+
+    try {
+      setError('');
+      setUpdating(meetingId);
+      
+      await deleteDoc(doc(db, 'meetings', meetingId));
+      
+    } catch (error) {
+      console.error('Error deleting meeting:', error);
+      setError('Error al eliminar la reunión');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const getFilteredMeetings = () => {
     const now = new Date();
     
@@ -459,59 +478,61 @@ export default function MeetingsList() {
                 )}
                 {updating !== meeting.id && (
                   <div className="action-buttons">
-                    {meeting.status === 'pending' && (
-                      <>
+                    <div className="primary-actions">
+                      {meeting.status === 'pending' && (
+                        <>
+                          <button 
+                            onClick={() => updateMeetingStatus(meeting.id, 'completed')}
+                            className="btn-success"
+                            title="Marcar como completada"
+                          >
+                            ✅
+                          </button>
+                          <button 
+                            onClick={() => updateMeetingStatus(meeting.id, 'cancelled')}
+                            className="btn-danger"
+                            title="Cancelar reunión"
+                          >
+                            ❌
+                          </button>
+                        </>
+                      )}
+                      {meeting.status === 'completed' && (
                         <button 
-                          onClick={() => updateMeetingStatus(meeting.id, 'completed')}
-                          className="btn-success"
-                          title="Marcar como completada"
+                          onClick={() => updateMeetingStatus(meeting.id, 'pending')}
+                          className="btn-secondary"
+                          title="Reabrir reunión"
                         >
-                          ✅ Completar
+                          🔄
                         </button>
+                      )}
+                      {meeting.status === 'cancelled' && (
                         <button 
-                          onClick={() => updateMeetingStatus(meeting.id, 'cancelled')}
-                          className="btn-danger"
-                          title="Cancelar reunión"
+                          onClick={() => updateMeetingStatus(meeting.id, 'pending')}
+                          className="btn-secondary"
+                          title="Reactivar reunión"
                         >
-                          ❌ Cancelar
+                          🔄
                         </button>
-                      </>
-                    )}
-                    {meeting.status === 'completed' && (
+                      )}
+                      
                       <button 
-                        onClick={() => updateMeetingStatus(meeting.id, 'pending')}
+                        onClick={() => startEditingMeeting(meeting)}
                         className="btn-secondary"
-                        title="Reabrir reunión"
+                        title="Editar reunión"
                       >
-                        🔄 Reabrir
+                        ✏️
                       </button>
-                    )}
-                    {meeting.status === 'cancelled' && (
-                      <button 
-                        onClick={() => updateMeetingStatus(meeting.id, 'pending')}
-                        className="btn-secondary"
-                        title="Reactivar reunión"
-                      >
-                        🔄 Reactivar
-                      </button>
-                    )}
-                    
-                    <button 
-                      onClick={() => startEditingMeeting(meeting)}
-                      className="btn-secondary"
-                      title="Editar reunión"
-                    >
-                      ✏️ Editar
-                    </button>
+                    </div>
 
                     {meeting.createdBy === currentUser?.uid && (
-                      <>
+                      <div className="owner-actions">
                         <button 
                           onClick={() => setShowShareModal(meeting.id)}
                           className="btn-info"
                           title="Gestionar compartir"
                         >
-                          👥 Compartir
+                          👥
                         </button>
                         
                         <button 
@@ -519,9 +540,17 @@ export default function MeetingsList() {
                           className={meeting.isPublic ? "btn-warning" : "btn-info"}
                           title={meeting.isPublic ? "Hacer privada" : "Hacer pública"}
                         >
-                          {meeting.isPublic ? "🔒 Hacer Privada" : "🌐 Hacer Pública"}
+                          {meeting.isPublic ? "🔒" : "🌐"}
                         </button>
-                      </>
+                        
+                        <button 
+                          onClick={() => deleteMeeting(meeting.id)}
+                          className="btn-danger"
+                          title="Eliminar reunión"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
