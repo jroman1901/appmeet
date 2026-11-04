@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { collection, query, where, getDocs, orderBy, or } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { FirebaseService } from '../services/firebaseService';
+import { Meeting, Task } from '../types';
+import { format, isToday, isTomorrow, addDays } from 'date-fns';
+import { es } from 'date-fns/locale';
+
+type AgendaItem = (Meeting & { type: 'meeting' }) | (Task & { type: 'task' });
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -12,6 +20,7 @@ export default function Dashboard() {
     pendingTasks: 0,
     completedTasks: 0
   });
+  const [upcomingItems, setUpcomingItems] = useState<AgendaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const { currentUser, logout } = useAuth();
   const firebaseService = FirebaseService.getInstance();
@@ -21,9 +30,55 @@ export default function Dashboard() {
 
     const loadData = async () => {
       try {
-        // Cargar estadísticas
         const statsData = await firebaseService.getUserStats(currentUser.uid);
         setStats(statsData);
+
+        const now = new Date();
+        const weekAhead = addDays(now, 7);
+
+        const meetingsQuery = query(
+          collection(db, 'meetings'),
+          where('createdBy', '==', currentUser.uid),
+          where('startTime', '>=', now),
+          where('startTime', '<=', weekAhead),
+          orderBy('startTime', 'asc')
+        );
+        const meetingsSnap = await getDocs(meetingsQuery);
+        const meetings: AgendaItem[] = meetingsSnap.docs
+          .map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+            startTime: docSnap.data().startTime?.toDate(),
+            endTime: docSnap.data().endTime?.toDate()
+          }) as Meeting)
+          .filter(meeting => meeting.status === 'pending')
+          .map(meeting => ({ ...meeting, type: 'meeting' as const }));
+
+        const tasksQuery = query(
+          collection(db, 'tasks'),
+          or(
+            where('createdBy', '==', currentUser.uid),
+            where('sharedWith', 'array-contains', currentUser.uid),
+            where('isPublic', '==', true)
+          )
+        );
+        const tasksSnap = await getDocs(tasksQuery);
+        const tasks: AgendaItem[] = tasksSnap.docs
+          .map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+            dueDate: docSnap.data().dueDate?.toDate()
+          }) as Task)
+          .filter(task => task.status === 'pending' && task.dueDate && task.dueDate >= now && task.dueDate <= weekAhead)
+          .map(task => ({ ...task, type: 'task' as const }));
+
+        const combined = [...meetings, ...tasks].sort((a, b) => {
+          const dateA = a.type === 'meeting' ? a.startTime : (a.dueDate as Date);
+          const dateB = b.type === 'meeting' ? b.startTime : (b.dueDate as Date);
+          return dateA.getTime() - dateB.getTime();
+        }).slice(0, 8);
+
+        setUpcomingItems(combined);
         setLoading(false);
       } catch (error) {
         console.error('Error loading dashboard data:', error);
@@ -34,6 +89,11 @@ export default function Dashboard() {
     loadData();
   }, [currentUser, firebaseService]);
 
+  const getDateLabel = (date: Date) => {
+    if (isToday(date)) return 'Hoy';
+    if (isTomorrow(date)) return 'Mañana';
+    return format(date, "EEE d MMM", { locale: es });
+  };
 
   if (loading) {
     return <div className="loading">Cargando...</div>;
@@ -81,15 +141,33 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="section">
-          <h2>Resumen</h2>
-          <p>Bienvenido a tu panel de control de reuniones.</p>
-          <p>Usa el menú de navegación para:</p>
-          <ul>
-            <li>📅 <strong>Programar Reunión:</strong> Crear nuevas citas con clientes</li>
-            <li>📋 <strong>Mis Reuniones:</strong> Ver y gestionar todas tus reuniones</li>
-            <li>✅ <strong>Mis Tareas:</strong> Organizar tus pendientes</li>
-          </ul>
+        <div className="section agenda-section">
+          <div className="agenda-header">
+            <h2>📅 Próximos 7 días</h2>
+            <Link to="/calendar" className="agenda-link">Ver calendario completo →</Link>
+          </div>
+
+          {upcomingItems.length === 0 ? (
+            <p className="agenda-empty">No tienes reuniones ni tareas programadas en los próximos 7 días.</p>
+          ) : (
+            <ul className="agenda-list">
+              {upcomingItems.map(item => (
+                <li key={`${item.type}-${item.id}`} className={`agenda-item ${item.type} priority-${item.priority}`}>
+                  <div className="agenda-date">
+                    {getDateLabel(item.type === 'meeting' ? item.startTime : (item.dueDate as Date))}
+                  </div>
+                  <div className="agenda-icon">{item.type === 'meeting' ? '📅' : '📋'}</div>
+                  <div className="agenda-details">
+                    <span className="agenda-title">{item.title}</span>
+                    {item.type === 'meeting' && <span className="agenda-sub">{item.clientName}</span>}
+                  </div>
+                  <div className="agenda-time">
+                    {format(item.type === 'meeting' ? item.startTime : (item.dueDate as Date), 'HH:mm')}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="section">

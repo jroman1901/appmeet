@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, orderBy, addDoc, doc, updateDoc, or 
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { useGoogleCalendar } from '../contexts/GoogleCalendarContext';
-import { syncMeetingOnCreate } from '../services/calendarSync';
+import { syncMeetingOnCreate, syncTaskOnCreate } from '../services/calendarSync';
 import GoogleSyncFields from './GoogleSyncFields';
 import { Meeting, Task, User } from '../types';
 import { 
@@ -606,7 +606,10 @@ function QuickMeetingModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const [itemType, setItemType] = useState<'meeting' | 'task'>('meeting');
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
   const [clientName, setClientName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
   const [startTime, setStartTime] = useState(format(selectedDate, 'HH:mm'));
@@ -653,67 +656,108 @@ function QuickMeetingModal({
     setError('');
 
     try {
-      const [startHour, startMin] = startTime.split(':');
-      const [endHour, endMin] = endTime.split(':');
-
-      const startDateTime = new Date(selectedDate);
-      startDateTime.setHours(parseInt(startHour), parseInt(startMin));
-
-      const endDateTime = new Date(selectedDate);
-      endDateTime.setHours(parseInt(endHour), parseInt(endMin));
-
-      if (endDateTime <= startDateTime) {
-        setError('La hora de fin debe ser posterior a la hora de inicio');
-        return;
-      }
-
       // Convertir IDs de usuarios a emails
       const sharedWithEmails = selectedUsers.map(userId => {
         const user = users.find(u => u.id === userId);
         return user ? user.email : '';
       }).filter(email => email);
 
-      const meetingData: any = {
-        title,
-        description: '',
-        clientName,
-        startTime: startDateTime,
-        endTime: endDateTime,
-        status: 'pending',
-        priority,
-        createdBy: currentUser.uid,
-        isPublic: isPublic,
-        syncWithGoogleCalendar,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
+      if (itemType === 'meeting') {
+        const [startHour, startMin] = startTime.split(':');
+        const [endHour, endMin] = endTime.split(':');
 
-      // Solo agregar campos opcionales si tienen valor
-      if (clientEmail) {
-        meetingData.clientEmail = clientEmail;
-      }
-      if (sharedWithEmails.length > 0) {
-        meetingData.sharedWith = sharedWithEmails;
-      }
-      if (syncWithGoogleCalendar) {
-        meetingData.reminderMinutesBefore = reminderMinutesBefore;
-      }
+        const startDateTime = new Date(selectedDate);
+        startDateTime.setHours(parseInt(startHour), parseInt(startMin));
 
-      const newMeetingRef = await addDoc(collection(db, 'meetings'), meetingData);
+        const endDateTime = new Date(selectedDate);
+        endDateTime.setHours(parseInt(endHour), parseInt(endMin));
 
-      await syncMeetingOnCreate(getAccessToken, newMeetingRef.id, {
-        title,
-        description: '',
-        clientName,
-        startTime: startDateTime,
-        endTime: endDateTime,
-        syncWithGoogleCalendar,
-        reminderMinutesBefore
-      });
+        if (endDateTime <= startDateTime) {
+          setError('La hora de fin debe ser posterior a la hora de inicio');
+          setLoading(false);
+          return;
+        }
+
+        const meetingData: any = {
+          title,
+          description: '',
+          clientName,
+          startTime: startDateTime,
+          endTime: endDateTime,
+          status: 'pending',
+          priority,
+          createdBy: currentUser.uid,
+          isPublic: isPublic,
+          syncWithGoogleCalendar,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        if (clientEmail) {
+          meetingData.clientEmail = clientEmail;
+        }
+        if (sharedWithEmails.length > 0) {
+          meetingData.sharedWith = sharedWithEmails;
+        }
+        if (syncWithGoogleCalendar) {
+          meetingData.reminderMinutesBefore = reminderMinutesBefore;
+        }
+
+        const newMeetingRef = await addDoc(collection(db, 'meetings'), meetingData);
+
+        await syncMeetingOnCreate(getAccessToken, newMeetingRef.id, {
+          title,
+          description: '',
+          clientName,
+          startTime: startDateTime,
+          endTime: endDateTime,
+          syncWithGoogleCalendar,
+          reminderMinutesBefore
+        });
+      } else {
+        const dueDate = new Date(selectedDate);
+        if (startTime) {
+          const [hour, min] = startTime.split(':');
+          dueDate.setHours(parseInt(hour), parseInt(min));
+        }
+
+        const taskData: any = {
+          title,
+          description: description.trim(),
+          priority,
+          status: 'pending',
+          createdBy: currentUser.uid,
+          isPublic: isPublic,
+          dueDate,
+          syncWithGoogleCalendar,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        if (category.trim()) {
+          taskData.category = category.trim();
+        }
+        if (sharedWithEmails.length > 0) {
+          taskData.sharedWith = sharedWithEmails;
+        }
+        if (syncWithGoogleCalendar) {
+          taskData.reminderMinutesBefore = reminderMinutesBefore;
+        }
+
+        const newTaskRef = await addDoc(collection(db, 'tasks'), taskData);
+
+        await syncTaskOnCreate(getAccessToken, newTaskRef.id, {
+          title,
+          description: taskData.description,
+          dueDate,
+          syncWithGoogleCalendar,
+          reminderMinutesBefore
+        });
+      }
 
       onSuccess();
     } catch (error: any) {
-      setError('Error al crear la reunión: ' + error.message);
+      setError(`Error al crear la ${itemType === 'meeting' ? 'reunión' : 'tarea'}: ` + error.message);
     } finally {
       setLoading(false);
     }
@@ -723,19 +767,36 @@ function QuickMeetingModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Nueva Reunión</h2>
+          <h2>{itemType === 'meeting' ? 'Nueva Reunión' : 'Nueva Tarea'}</h2>
           <button onClick={onClose} className="close-btn">×</button>
         </div>
         <div className="modal-body">
           <p className="selected-date">
             📅 {format(selectedDate, 'EEEE, d MMMM yyyy', { locale: es })}
           </p>
-          
+
+          <div className="item-type-toggle">
+            <button
+              type="button"
+              className={`type-toggle-btn ${itemType === 'meeting' ? 'active' : ''}`}
+              onClick={() => setItemType('meeting')}
+            >
+              📅 Reunión
+            </button>
+            <button
+              type="button"
+              className={`type-toggle-btn ${itemType === 'task' ? 'active' : ''}`}
+              onClick={() => setItemType('task')}
+            >
+              📋 Tarea
+            </button>
+          </div>
+
           {error && <div className="error">{error}</div>}
-          
+
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label htmlFor="title">Título de la reunión:</label>
+              <label htmlFor="title">{itemType === 'meeting' ? 'Título de la reunión:' : 'Título de la tarea:'}</label>
               <input
                 id="title"
                 type="text"
@@ -745,49 +806,87 @@ function QuickMeetingModal({
               />
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="startTime">Hora inicio:</label>
-                <input
-                  id="startTime"
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="endTime">Hora fin:</label>
-                <input
-                  id="endTime"
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+            {itemType === 'meeting' ? (
+              <>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="startTime">Hora inicio:</label>
+                    <input
+                      id="startTime"
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="endTime">Hora fin:</label>
+                    <input
+                      id="endTime"
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
 
-            <div className="form-group">
-              <label htmlFor="clientName">Nombre del cliente:</label>
-              <input
-                id="clientName"
-                type="text"
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                required
-              />
-            </div>
+                <div className="form-group">
+                  <label htmlFor="clientName">Nombre del cliente:</label>
+                  <input
+                    id="clientName"
+                    type="text"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    required
+                  />
+                </div>
 
-            <div className="form-group">
-              <label htmlFor="clientEmail">Email del cliente (opcional):</label>
-              <input
-                id="clientEmail"
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-              />
-            </div>
+                <div className="form-group">
+                  <label htmlFor="clientEmail">Email del cliente (opcional):</label>
+                  <input
+                    id="clientEmail"
+                    type="email"
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="form-group">
+                  <label htmlFor="taskDescription">Descripción (opcional):</label>
+                  <textarea
+                    id="taskDescription"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="taskTime">Hora (opcional):</label>
+                    <input
+                      id="taskTime"
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="taskCategory">Categoría (opcional):</label>
+                    <input
+                      id="taskCategory"
+                      type="text"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      placeholder="Ej: Trabajo, Personal..."
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="form-group">
               <label htmlFor="priority">Prioridad:</label>
@@ -804,13 +903,13 @@ function QuickMeetingModal({
 
             <div className="sharing-section">
               <h4>Opciones de Compartir</h4>
-              
+
               <UserSelector
                 users={users}
                 selectedUsers={selectedUsers}
                 onSelectionChange={setSelectedUsers}
                 label="Compartir con usuarios:"
-                helperText="Opcional: Los usuarios seleccionados podrán ver y editar esta reunión"
+                helperText={`Opcional: Los usuarios seleccionados podrán ver y editar esta ${itemType === 'meeting' ? 'reunión' : 'tarea'}`}
               />
 
               <div className="form-group">
@@ -826,7 +925,7 @@ function QuickMeetingModal({
             </div>
 
             <GoogleSyncFields
-              idPrefix="quickMeeting"
+              idPrefix="quickItem"
               syncEnabled={syncWithGoogleCalendar}
               onSyncChange={setSyncWithGoogleCalendar}
               reminderMinutes={reminderMinutesBefore}
@@ -838,7 +937,7 @@ function QuickMeetingModal({
                 Cancelar
               </button>
               <button type="submit" disabled={loading} className="btn-primary">
-                {loading ? 'Creando...' : 'Crear Reunión'}
+                {loading ? 'Creando...' : itemType === 'meeting' ? 'Crear Reunión' : 'Crear Tarea'}
               </button>
             </div>
           </form>

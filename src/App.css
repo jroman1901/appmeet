@@ -1822,3 +1822,134 @@ body {
     text-align: center;
   }
 }
+
+/* Selector de tipo (Reunión / Tarea) en el modal rápido del calendario */
+.item-type-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.type-toggle-btn {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  border: 2px solid #e5e7eb;
+  background: white;
+  border-radius: 8px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.type-toggle-btn:hover {
+  border-color: #c4b5fd;
+}
+
+.type-toggle-btn.active {
+  border-color: #7c3aed;
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+/* Agenda de próximos días en el Panel de Control */
+.agenda-section {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 900px) {
+  .agenda-section {
+    grid-column: span 2;
+  }
+}
+
+.agenda-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.agenda-header h2 {
+  margin-bottom: 0;
+}
+
+.agenda-link {
+  color: #7c3aed;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.agenda-link:hover {
+  text-decoration: underline;
+}
+
+.agenda-empty {
+  color: #6b7280;
+}
+
+.agenda-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.agenda-item {
+  display: grid;
+  grid-template-columns: 70px 28px 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  border-left: 3px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.agenda-item.meeting {
+  border-left-color: #3b82f6;
+}
+
+.agenda-item.task {
+  border-left-color: #f59e0b;
+}
+
+.agenda-date {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: capitalize;
+}
+
+.agenda-icon {
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.agenda-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.agenda-title {
+  font-weight: 600;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agenda-sub {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.agenda-time {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+}

@@ -187,7 +187,9 @@ function TaskManager() {
       // Solo agregar campos opcionales si tienen valor válido
       if (dueDate && dueDate.trim()) {
         try {
-          const dueDateObj = new Date(dueDate);
+          // "T00:00:00" fuerza a interpretar la fecha en hora local en vez de UTC
+          // (si no, un input type="date" se corre un día hacia atrás en zonas horarias negativas)
+          const dueDateObj = new Date(`${dueDate}T00:00:00`);
           if (!isNaN(dueDateObj.getTime())) {
             taskData.dueDate = dueDateObj;
           }
@@ -412,7 +414,9 @@ function TaskManager() {
       let newDueDate: Date | undefined;
       if (dueDate && dueDate.trim()) {
         try {
-          const dueDateObj = new Date(dueDate);
+          // "T00:00:00" fuerza a interpretar la fecha en hora local en vez de UTC
+          // (si no, un input type="date" se corre un día hacia atrás en zonas horarias negativas)
+          const dueDateObj = new Date(`${dueDate}T00:00:00`);
           if (!isNaN(dueDateObj.getTime())) {
             newDueDate = dueDateObj;
             taskData.dueDate = dueDateObj;
