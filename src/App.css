@@ -34,7 +34,7 @@ body {
 
 /* Navigation */
 .navigation {
-  background: linear-gradient(135deg, #5b21b6 0%, #c026d3 100%);
+  background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 100%);
   color: white;
   padding: 1rem 2rem;
   display: flex;
@@ -280,6 +280,19 @@ body {
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   text-align: center;
+}
+
+.stat-card-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+}
+
+.stat-card-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
 }
 
 .stat-card h3 {

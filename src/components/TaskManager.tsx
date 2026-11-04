@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
@@ -57,7 +58,12 @@ class TaskManagerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBounda
   }
 }
 
+type TaskFilter = 'all' | 'pending' | 'completed' | 'mine' | 'shared';
+const VALID_TASK_FILTERS: TaskFilter[] = ['all', 'pending', 'completed', 'mine', 'shared'];
+
 function TaskManager() {
+  const [searchParams] = useSearchParams();
+  const initialFilter = searchParams.get('filter') as TaskFilter | null;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -65,7 +71,9 @@ function TaskManager() {
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [category, setCategory] = useState('');
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'mine' | 'shared'>('all');
+  const [filter, setFilter] = useState<TaskFilter>(
+    initialFilter && VALID_TASK_FILTERS.includes(initialFilter) ? initialFilter : 'all'
+  );
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');

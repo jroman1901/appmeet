@@ -113,22 +113,22 @@ export default function Dashboard() {
       </header>
 
       <div className="dashboard-stats">
-        <div className="stat-card">
+        <Link to="/meetings?filter=pending" className="stat-card stat-card-link">
           <h3>Reuniones Pendientes</h3>
           <div className="stat-number">{stats.pendingMeetings}</div>
-        </div>
-        <div className="stat-card overdue">
+        </Link>
+        <Link to="/meetings?filter=overdue" className="stat-card stat-card-link overdue">
           <h3>Reuniones Atrasadas</h3>
           <div className="stat-number">{stats.overdueMeetings}</div>
-        </div>
-        <div className="stat-card completed">
+        </Link>
+        <Link to="/meetings?filter=completed" className="stat-card stat-card-link completed">
           <h3>Reuniones Completadas</h3>
           <div className="stat-number">{stats.completedMeetings}</div>
-        </div>
-        <div className="stat-card">
+        </Link>
+        <Link to="/tasks?filter=pending" className="stat-card stat-card-link">
           <h3>Tareas Pendientes</h3>
           <div className="stat-number">{stats.pendingTasks}</div>
-        </div>
+        </Link>
       </div>
 
       <div className="dashboard-content">

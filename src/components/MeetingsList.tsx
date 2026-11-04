@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,9 +10,16 @@ import { Meeting, User } from '../types';
 import { format, isAfter, isBefore } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+type MeetingFilter = 'all' | 'pending' | 'completed' | 'overdue' | 'cancelled' | 'mine' | 'shared';
+const VALID_FILTERS: MeetingFilter[] = ['all', 'pending', 'completed', 'overdue', 'cancelled', 'mine', 'shared'];
+
 export default function MeetingsList() {
+  const [searchParams] = useSearchParams();
+  const initialFilter = searchParams.get('filter') as MeetingFilter | null;
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'overdue' | 'cancelled' | 'mine' | 'shared'>('all');
+  const [filter, setFilter] = useState<MeetingFilter>(
+    initialFilter && VALID_FILTERS.includes(initialFilter) ? initialFilter : 'all'
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState<string | null>(null);
