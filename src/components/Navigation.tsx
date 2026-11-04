@@ -12,6 +12,7 @@ export default function Navigation() {
   useEffect(() => {
     const checkAdminStatus = async () => {
       if (currentUser) {
+        console.log('[DEBUG] UID de la sesión actual:', currentUser.uid, 'email:', currentUser.email);
         const adminStatus = await userService.isAdmin(currentUser.uid);
         setIsAdmin(adminStatus);
       }

@@ -158,10 +158,12 @@ export class FirebaseService {
     completedTasks: number;
   }> {
     try {
+      console.log('[DEBUG] getUserStats consultando con userId:', userId);
       const [meetingsSnapshot, tasksSnapshot] = await Promise.all([
         getDocs(query(collection(db, 'meetings'), where('createdBy', '==', userId))),
         getDocs(query(collection(db, 'tasks'), where('createdBy', '==', userId)))
       ]);
+      console.log('[DEBUG] getUserStats resultado crudo: meetings=', meetingsSnapshot.size, 'tasks=', tasksSnapshot.size);
 
       const meetings = meetingsSnapshot.docs.map(doc => {
         const data = doc.data();
@@ -187,8 +189,8 @@ export class FirebaseService {
         pendingTasks: tasks.filter(t => t.status === 'pending').length,
         completedTasks: tasks.filter(t => t.status === 'completed').length
       };
-    } catch (error) {
-      console.error('Error fetching user stats:', error);
+    } catch (error: any) {
+      console.error('[DEBUG] Error fetching user stats. code:', error?.code, 'message:', error?.message, error);
       return {
         totalMeetings: 0,
         pendingMeetings: 0,
