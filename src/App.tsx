@@ -24,11 +24,10 @@ function Layout({ children }: { children: React.ReactNode }) {
       </main>
       <footer className="app-footer">
         <div className="footer-content">
-          <p>&copy; 2024 Meeting Scheduler - Sistema de gestión de reuniones y tareas</p>
+          <p className="footer-copyright">&copy; 2026 Meeting Scheduler &middot; Sistema de gestión de reuniones y tareas</p>
           <div className="version-info">
-            <span className="version-label">Versión:</span> 
-            <span className="version-number">v2.1.0</span>
-            <span className="version-features"> - Edición y Compartir Colaborativo</span>
+            <span className="version-number">v3.0.0</span>
+            <span className="version-features">Integración con Google Calendar &amp; Seguridad Reforzada</span>
           </div>
         </div>
       </footer>

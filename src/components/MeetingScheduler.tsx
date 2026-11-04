@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGoogleCalendar } from '../contexts/GoogleCalendarContext';
 import { FirebaseService } from '../services/firebaseService';
@@ -27,6 +28,7 @@ export default function MeetingScheduler() {
   const [success, setSuccess] = useState('');
 
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const { getAccessToken, defaultReminderMinutes } = useGoogleCalendar();
   const [syncWithGoogleCalendar, setSyncWithGoogleCalendar] = useState(false);
   const [reminderMinutesBefore, setReminderMinutesBefore] = useState(defaultReminderMinutes);
@@ -137,6 +139,8 @@ export default function MeetingScheduler() {
       setIsPublic(false);
       setSyncWithGoogleCalendar(false);
       setReminderMinutesBefore(defaultReminderMinutes);
+
+      setTimeout(() => navigate('/meetings'), 800);
     } catch (error: any) {
       console.error('Error scheduling meeting:', error);
       setError(error.message || 'Error al programar la reunión');

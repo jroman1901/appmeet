@@ -34,7 +34,7 @@ body {
 
 /* Navigation */
 .navigation {
-  background-color: #2563eb;
+  background-color: #7c3aed;
   color: white;
   padding: 1rem 2rem;
   display: flex;
@@ -1771,4 +1771,54 @@ body {
   background: #f9fafb;
   border-radius: 6px;
   border-left: 4px solid #3b82f6;
+}
+
+/* Footer */
+.app-footer {
+  background-color: #1e1033;
+  color: #ffffff;
+  margin-top: 2rem;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.footer-copyright {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.version-number {
+  background: #7c3aed;
+  color: white;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+}
+
+.version-features {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+@media (max-width: 768px) {
+  .footer-content {
+    flex-direction: column;
+    text-align: center;
+  }
 }
