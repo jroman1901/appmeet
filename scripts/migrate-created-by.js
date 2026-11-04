@@ -60,14 +60,15 @@ async function main() {
     process.exit(1);
   }
 
-  const admin = require('firebase-admin');
+  const { initializeApp, cert } = require('firebase-admin/app');
+  const { getFirestore } = require('firebase-admin/firestore');
   const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+  initializeApp({
+    credential: cert(serviceAccount)
   });
 
-  const db = admin.firestore();
+  const db = getFirestore();
 
   console.log(`Modo: ${apply ? 'APLICANDO CAMBIOS' : 'DRY RUN (solo lectura)'}`);
   console.log(`De createdBy = ${oldUid}`);

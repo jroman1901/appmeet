@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
@@ -14,5 +14,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Algunas redes/proxies bloquean o degradan el canal de streaming que usa
+// Firestore por defecto (WebChannel), causando errores de "client is offline"
+// solo en producción. Forzar long-polling evita ese transporte y es la
+// solución recomendada por Firebase para este síntoma.
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+});
 export default app;
