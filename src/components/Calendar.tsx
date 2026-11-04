@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, getDocs, orderBy, addDoc, doc, updateDoc, or } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
@@ -42,11 +42,7 @@ export default function Calendar() {
   const [selectedItem, setSelectedItem] = useState<(Meeting & { type: 'meeting' }) | (Task & { type: 'task' }) | null>(null);
   const { currentUser } = useAuth();
 
-  useEffect(() => {
-    loadData();
-  }, [currentUser, currentDate, view]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!currentUser) return;
 
     setLoading(true);
@@ -119,7 +115,11 @@ export default function Calendar() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser, currentDate, view]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const getItemsForDay = (date: Date) => {
     const dayMeetings = meetings.filter(meeting => 

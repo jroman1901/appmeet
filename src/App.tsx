@@ -5,7 +5,6 @@ import { GoogleCalendarProvider } from './contexts/GoogleCalendarContext';
 import PrivateRoute from './components/PrivateRoute';
 import Navigation from './components/Navigation';
 import Login from './components/Login';
-import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import MeetingScheduler from './components/MeetingScheduler';
 import MeetingsList from './components/MeetingsList';

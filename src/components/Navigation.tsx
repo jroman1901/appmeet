@@ -18,7 +18,7 @@ export default function Navigation() {
     };
 
     checkAdminStatus();
-  }, [currentUser]);
+  }, [currentUser, userService]);
 
   const isActive = (path: string) => {
     return location.pathname === path ? 'active' : '';

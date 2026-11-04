@@ -55,7 +55,7 @@ export default function Profile() {
     };
 
     load();
-  }, [currentUser]);
+  }, [currentUser, userService]);
 
   const handleBootstrapAdmin = async () => {
     if (!currentUser || !currentUser.email) return;

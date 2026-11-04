@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { FirebaseService } from '../services/firebaseService';
-import { Meeting, Task } from '../types';
-import { format, isAfter, isBefore } from 'date-fns';
-import { es } from 'date-fns/locale';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -35,7 +32,7 @@ export default function Dashboard() {
     };
 
     loadData();
-  }, [currentUser]);
+  }, [currentUser, firebaseService]);
 
 
   if (loading) {

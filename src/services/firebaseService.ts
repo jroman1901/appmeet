@@ -9,8 +9,7 @@ import {
   where, 
   orderBy, 
   serverTimestamp,
-  onSnapshot,
-  Timestamp
+  onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { Meeting, Task } from '../types';

@@ -4,7 +4,7 @@ import { useGoogleCalendar } from '../contexts/GoogleCalendarContext';
 import { FirebaseService } from '../services/firebaseService';
 import { syncMeetingOnCreate } from '../services/calendarSync';
 import GoogleSyncFields from './GoogleSyncFields';
-import { Meeting, User } from '../types';
+import { User } from '../types';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 

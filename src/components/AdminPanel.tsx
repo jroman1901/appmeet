@@ -42,7 +42,7 @@ export default function AdminPanel() {
     };
 
     checkAdminAndLoadData();
-  }, [currentUser]);
+  }, [currentUser, userService]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
