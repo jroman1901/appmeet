@@ -56,8 +56,8 @@ export default function Calendar() {
           endDate = endOfMonth(currentDate);
           break;
         case 'week':
-          startDate = startOfWeek(currentDate, { locale: es });
-          endDate = endOfWeek(currentDate, { locale: es });
+          startDate = startOfWeek(currentDate, { locale: es, weekStartsOn: 0 });
+          endDate = endOfWeek(currentDate, { locale: es, weekStartsOn: 0 });
           break;
         case 'day':
           startDate = startOfDay(currentDate);
@@ -214,8 +214,8 @@ export default function Calendar() {
   const renderMonthView = () => {
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
-    const calendarStart = startOfWeek(monthStart, { locale: es });
-    const calendarEnd = endOfWeek(monthEnd, { locale: es });
+    const calendarStart = startOfWeek(monthStart, { locale: es, weekStartsOn: 0 });
+    const calendarEnd = endOfWeek(monthEnd, { locale: es, weekStartsOn: 0 });
     const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
     const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -288,8 +288,8 @@ export default function Calendar() {
   };
 
   const renderWeekView = () => {
-    const weekStart = startOfWeek(currentDate, { locale: es });
-    const weekEnd = endOfWeek(currentDate, { locale: es });
+    const weekStart = startOfWeek(currentDate, { locale: es, weekStartsOn: 0 });
+    const weekEnd = endOfWeek(currentDate, { locale: es, weekStartsOn: 0 });
     const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
     return (
@@ -469,8 +469,8 @@ export default function Calendar() {
       case 'month':
         return format(currentDate, 'MMMM yyyy', { locale: es });
       case 'week':
-        const weekStart = startOfWeek(currentDate, { locale: es });
-        const weekEnd = endOfWeek(currentDate, { locale: es });
+        const weekStart = startOfWeek(currentDate, { locale: es, weekStartsOn: 0 });
+        const weekEnd = endOfWeek(currentDate, { locale: es, weekStartsOn: 0 });
         return `${format(weekStart, 'd MMM')} - ${format(weekEnd, 'd MMM yyyy', { locale: es })}`;
       case 'day':
         return format(currentDate, 'EEEE, d MMMM yyyy', { locale: es });
