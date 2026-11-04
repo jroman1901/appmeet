@@ -5,7 +5,7 @@ import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { FirebaseService } from '../services/firebaseService';
 import { Meeting, Task } from '../types';
-import { format, isToday, isTomorrow, addDays } from 'date-fns';
+import { format, isToday, isTomorrow, addDays, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 type AgendaItem = (Meeting & { type: 'meeting' }) | (Task & { type: 'task' });
@@ -33,13 +33,16 @@ export default function Dashboard() {
         const statsData = await firebaseService.getUserStats(currentUser.uid);
         setStats(statsData);
 
-        const now = new Date();
-        const weekAhead = addDays(now, 7);
+        // Se usa el inicio del día (no la hora exacta actual) como límite inferior
+        // para que algo programado "hoy" temprano no quede excluido por ya haber
+        // pasado esa hora en el momento de cargar el panel.
+        const todayStart = startOfDay(new Date());
+        const weekAhead = endOfDay(addDays(todayStart, 7));
 
         const meetingsQuery = query(
           collection(db, 'meetings'),
           where('createdBy', '==', currentUser.uid),
-          where('startTime', '>=', now),
+          where('startTime', '>=', todayStart),
           where('startTime', '<=', weekAhead),
           orderBy('startTime', 'asc')
         );
@@ -69,7 +72,7 @@ export default function Dashboard() {
             ...docSnap.data(),
             dueDate: docSnap.data().dueDate?.toDate()
           }) as Task)
-          .filter(task => task.status === 'pending' && task.dueDate && task.dueDate >= now && task.dueDate <= weekAhead)
+          .filter(task => task.status === 'pending' && task.dueDate && task.dueDate >= todayStart && task.dueDate <= weekAhead)
           .map(task => ({ ...task, type: 'task' as const }));
 
         const combined = [...meetings, ...tasks].sort((a, b) => {
