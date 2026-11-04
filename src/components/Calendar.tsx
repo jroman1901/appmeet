@@ -612,7 +612,9 @@ function QuickMeetingModal({
   const [category, setCategory] = useState('');
   const [clientName, setClientName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
-  const [startTime, setStartTime] = useState(format(selectedDate, 'HH:mm'));
+  const [startTime, setStartTime] = useState(
+    isToday(selectedDate) ? format(new Date(), 'HH:mm') : '09:00'
+  );
   const [endTime, setEndTime] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
