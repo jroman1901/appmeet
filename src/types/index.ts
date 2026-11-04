@@ -23,6 +23,9 @@ export interface Meeting {
   createdBy: string;
   sharedWith?: string[];
   isPublic?: boolean;
+  syncWithGoogleCalendar?: boolean;
+  reminderMinutesBefore?: number;
+  googleEventId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,6 +42,9 @@ export interface Task {
   createdBy: string;
   sharedWith?: string[];
   isPublic?: boolean;
+  syncWithGoogleCalendar?: boolean;
+  reminderMinutesBefore?: number;
+  googleEventId?: string;
   createdAt: Date;
   updatedAt: Date;
 }

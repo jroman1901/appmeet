@@ -63,6 +63,11 @@ export default function Navigation() {
             </Link>
           </li>
         )}
+        <li>
+          <Link to="/profile" className={isActive('/profile')}>
+            Mi Perfil
+          </Link>
+        </li>
       </ul>
     </nav>
   );

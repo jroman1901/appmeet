@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { GoogleCalendarProvider } from './contexts/GoogleCalendarContext';
 import PrivateRoute from './components/PrivateRoute';
 import Navigation from './components/Navigation';
 import Login from './components/Login';
@@ -10,7 +11,7 @@ import MeetingScheduler from './components/MeetingScheduler';
 import MeetingsList from './components/MeetingsList';
 import TaskManager from './components/TaskManager';
 import AdminPanel from './components/AdminPanel';
-import FirstAdminSetup from './components/FirstAdminSetup';
+import Profile from './components/Profile';
 import Calendar from './components/Calendar';
 import './App.css';
 
@@ -40,6 +41,7 @@ function App() {
 
   return (
     <AuthProvider>
+      <GoogleCalendarProvider>
       <Router>
         <div className="App">
           <Routes>
@@ -93,16 +95,17 @@ function App() {
                 </Layout>
               </PrivateRoute>
             } />
-            <Route path="/setup-admin" element={
+            <Route path="/profile" element={
               <PrivateRoute>
                 <Layout>
-                  <FirstAdminSetup />
+                  <Profile />
                 </Layout>
               </PrivateRoute>
             } />
           </Routes>
         </div>
       </Router>
+      </GoogleCalendarProvider>
     </AuthProvider>
   );
 }

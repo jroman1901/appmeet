@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, addDoc, doc, updateDoc, or } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
+import { useGoogleCalendar } from '../contexts/GoogleCalendarContext';
+import { syncMeetingOnCreate } from '../services/calendarSync';
+import GoogleSyncFields from './GoogleSyncFields';
 import { Meeting, Task, User } from '../types';
 import { 
   format, 
@@ -615,6 +618,9 @@ function QuickMeetingModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { currentUser } = useAuth();
+  const { getAccessToken, defaultReminderMinutes } = useGoogleCalendar();
+  const [syncWithGoogleCalendar, setSyncWithGoogleCalendar] = useState(false);
+  const [reminderMinutesBefore, setReminderMinutesBefore] = useState(defaultReminderMinutes);
 
   // Cargar usuarios disponibles
   useEffect(() => {
@@ -626,14 +632,14 @@ function QuickMeetingModal({
           ...doc.data(),
           createdAt: doc.data().createdAt?.toDate()
         })) as User[];
-        
+
         // Filtrar el usuario actual
         setUsers(usersData.filter(user => user.id !== currentUser?.uid));
       } catch (error) {
         console.error('Error loading users:', error);
       }
     };
-    
+
     if (currentUser) {
       loadUsers();
     }
@@ -649,10 +655,10 @@ function QuickMeetingModal({
     try {
       const [startHour, startMin] = startTime.split(':');
       const [endHour, endMin] = endTime.split(':');
-      
+
       const startDateTime = new Date(selectedDate);
       startDateTime.setHours(parseInt(startHour), parseInt(startMin));
-      
+
       const endDateTime = new Date(selectedDate);
       endDateTime.setHours(parseInt(endHour), parseInt(endMin));
 
@@ -677,6 +683,7 @@ function QuickMeetingModal({
         priority,
         createdBy: currentUser.uid,
         isPublic: isPublic,
+        syncWithGoogleCalendar,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -688,8 +695,21 @@ function QuickMeetingModal({
       if (sharedWithEmails.length > 0) {
         meetingData.sharedWith = sharedWithEmails;
       }
+      if (syncWithGoogleCalendar) {
+        meetingData.reminderMinutesBefore = reminderMinutesBefore;
+      }
 
-      await addDoc(collection(db, 'meetings'), meetingData);
+      const newMeetingRef = await addDoc(collection(db, 'meetings'), meetingData);
+
+      await syncMeetingOnCreate(getAccessToken, newMeetingRef.id, {
+        title,
+        description: '',
+        clientName,
+        startTime: startDateTime,
+        endTime: endDateTime,
+        syncWithGoogleCalendar,
+        reminderMinutesBefore
+      });
 
       onSuccess();
     } catch (error: any) {
@@ -804,6 +824,14 @@ function QuickMeetingModal({
                 </label>
               </div>
             </div>
+
+            <GoogleSyncFields
+              idPrefix="quickMeeting"
+              syncEnabled={syncWithGoogleCalendar}
+              onSyncChange={setSyncWithGoogleCalendar}
+              reminderMinutes={reminderMinutesBefore}
+              onReminderChange={setReminderMinutesBefore}
+            />
 
             <div className="modal-actions">
               <button type="button" onClick={onClose} className="btn-secondary">

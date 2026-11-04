@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
+import { useGoogleCalendar } from '../contexts/GoogleCalendarContext';
+import { syncMeetingOnUpdate, syncMeetingOnDelete } from '../services/calendarSync';
+import GoogleSyncFields from './GoogleSyncFields';
 import { Meeting, User } from '../types';
 import { format, isAfter, isBefore } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -31,8 +34,11 @@ export default function MeetingsList() {
   const [isPublic, setIsPublic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
-  
+  const [syncWithGoogleCalendar, setSyncWithGoogleCalendar] = useState(false);
+  const [reminderMinutesBefore, setReminderMinutesBefore] = useState(30);
+
   const { currentUser } = useAuth();
+  const { getAccessToken, defaultReminderMinutes } = useGoogleCalendar();
 
   useEffect(() => {
     if (!currentUser) return;
@@ -133,6 +139,8 @@ export default function MeetingsList() {
     setSelectedUsers(userIds);
     
     setIsPublic(meeting.isPublic || false);
+    setSyncWithGoogleCalendar(meeting.syncWithGoogleCalendar || false);
+    setReminderMinutesBefore(meeting.reminderMinutesBefore ?? defaultReminderMinutes);
     setShowEditModal(true);
   };
 
@@ -199,10 +207,27 @@ export default function MeetingsList() {
         meetingData.sharedWith = deleteField();
       }
 
+      meetingData.syncWithGoogleCalendar = syncWithGoogleCalendar;
+      if (syncWithGoogleCalendar) {
+        meetingData.reminderMinutesBefore = reminderMinutesBefore;
+      } else if (editingMeeting?.reminderMinutesBefore !== undefined) {
+        meetingData.reminderMinutesBefore = deleteField();
+      }
+
       await updateDoc(doc(db, 'meetings', editingMeeting.id), meetingData);
-      
+
+      await syncMeetingOnUpdate(getAccessToken, editingMeeting.id, editingMeeting.googleEventId, {
+        title,
+        description,
+        clientName,
+        startTime: startDateTime,
+        endTime: endDateTime,
+        syncWithGoogleCalendar,
+        reminderMinutesBefore
+      });
+
       cancelEditing();
-      
+
     } catch (error: any) {
       console.error('Error updating meeting:', error);
       setError('Error al actualizar la reunión: ' + error.message);
@@ -224,6 +249,8 @@ export default function MeetingsList() {
     setNotes('');
     setSelectedUsers([]);
     setIsPublic(false);
+    setSyncWithGoogleCalendar(false);
+    setReminderMinutesBefore(defaultReminderMinutes);
     setEditingMeeting(null);
     setShowEditModal(false);
     setError('');
@@ -298,9 +325,11 @@ export default function MeetingsList() {
     try {
       setError('');
       setUpdating(meetingId);
-      
+
+      const meetingToDelete = meetings.find(m => m.id === meetingId);
       await deleteDoc(doc(db, 'meetings', meetingId));
-      
+      await syncMeetingOnDelete(getAccessToken, meetingToDelete?.googleEventId);
+
     } catch (error) {
       console.error('Error deleting meeting:', error);
       setError('Error al eliminar la reunión');
@@ -709,13 +738,21 @@ export default function MeetingsList() {
                     </div>
                   </div>
                 )}
-                
+
+                <GoogleSyncFields
+                  idPrefix="editMeeting"
+                  syncEnabled={syncWithGoogleCalendar}
+                  onSyncChange={setSyncWithGoogleCalendar}
+                  reminderMinutes={reminderMinutesBefore}
+                  onReminderChange={setReminderMinutesBefore}
+                />
+
                 <div className="modal-actions">
                   <button type="button" onClick={cancelEditing} className="btn-secondary">
                     Cancelar
                   </button>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={submitting}
                     className="btn-primary"
                   >

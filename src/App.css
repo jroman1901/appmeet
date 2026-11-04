@@ -34,7 +34,7 @@ body {
 
 /* Navigation */
 .navigation {
-  background-color: #2563eb;
+  background-color: #fbbf24;
   color: white;
   padding: 1rem 2rem;
   display: flex;
@@ -1733,4 +1733,42 @@ body {
 
 .context-menu-item.cancel:hover {
   background: #f9fafb;
+}
+
+/* Profile page */
+.profile-container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.profile-card {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
+}
+
+.profile-card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #1f2937;
+}
+
+.profile-info p {
+  margin: 0.5rem 0;
+  color: #374151;
+}
+
+.help-text {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.sync-section {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 6px;
+  border-left: 4px solid #3b82f6;
 }

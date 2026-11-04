@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useGoogleCalendar } from '../contexts/GoogleCalendarContext';
 import { FirebaseService } from '../services/firebaseService';
+import { syncMeetingOnCreate } from '../services/calendarSync';
+import GoogleSyncFields from './GoogleSyncFields';
 import { Meeting, User } from '../types';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -22,8 +25,11 @@ export default function MeetingScheduler() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  
+
   const { currentUser } = useAuth();
+  const { getAccessToken, defaultReminderMinutes } = useGoogleCalendar();
+  const [syncWithGoogleCalendar, setSyncWithGoogleCalendar] = useState(false);
+  const [reminderMinutesBefore, setReminderMinutesBefore] = useState(defaultReminderMinutes);
   const firebaseService = FirebaseService.getInstance();
 
   // Cargar usuarios disponibles
@@ -97,10 +103,25 @@ export default function MeetingScheduler() {
         meetingData.sharedWith = sharedWithEmails;
       }
 
-      await firebaseService.createMeeting(meetingData);
+      meetingData.syncWithGoogleCalendar = syncWithGoogleCalendar;
+      if (syncWithGoogleCalendar) {
+        meetingData.reminderMinutesBefore = reminderMinutesBefore;
+      }
+
+      const meetingId = await firebaseService.createMeeting(meetingData);
+
+      await syncMeetingOnCreate(getAccessToken, meetingId, {
+        title,
+        description,
+        clientName,
+        startTime: startDateTime,
+        endTime: endDateTime,
+        syncWithGoogleCalendar,
+        reminderMinutesBefore
+      });
 
       setSuccess('Reunión programada exitosamente');
-      
+
       // Reset form
       setTitle('');
       setDescription('');
@@ -114,6 +135,8 @@ export default function MeetingScheduler() {
       setNotes('');
       setSelectedUsers([]);
       setIsPublic(false);
+      setSyncWithGoogleCalendar(false);
+      setReminderMinutesBefore(defaultReminderMinutes);
     } catch (error: any) {
       console.error('Error scheduling meeting:', error);
       setError(error.message || 'Error al programar la reunión');
@@ -268,8 +291,16 @@ export default function MeetingScheduler() {
           </div>
         </div>
 
-        <button 
-          type="submit" 
+        <GoogleSyncFields
+          idPrefix="newMeeting"
+          syncEnabled={syncWithGoogleCalendar}
+          onSyncChange={setSyncWithGoogleCalendar}
+          reminderMinutes={reminderMinutesBefore}
+          onReminderChange={setReminderMinutesBefore}
+        />
+
+        <button
+          type="submit"
           disabled={loading}
           className="btn-primary"
         >

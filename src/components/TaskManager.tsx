@@ -2,6 +2,9 @@ import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'rea
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, or, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
+import { useGoogleCalendar } from '../contexts/GoogleCalendarContext';
+import { syncTaskOnCreate, syncTaskOnUpdate, syncTaskOnDelete } from '../services/calendarSync';
+import GoogleSyncFields from './GoogleSyncFields';
 import { Task, User } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -74,6 +77,9 @@ function TaskManager() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const { currentUser } = useAuth();
+  const { getAccessToken, defaultReminderMinutes } = useGoogleCalendar();
+  const [syncWithGoogleCalendar, setSyncWithGoogleCalendar] = useState(false);
+  const [reminderMinutesBefore, setReminderMinutesBefore] = useState(defaultReminderMinutes);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -198,10 +204,23 @@ function TaskManager() {
         taskData.sharedWith = sharedWithEmails;
       }
 
+      taskData.syncWithGoogleCalendar = syncWithGoogleCalendar;
+      if (syncWithGoogleCalendar) {
+        taskData.reminderMinutesBefore = reminderMinutesBefore;
+      }
+
       console.log('Creating task with data:', taskData);
-      await addDoc(collection(db, 'tasks'), taskData);
+      const newTaskRef = await addDoc(collection(db, 'tasks'), taskData);
       console.log('Task created successfully');
-      
+
+      await syncTaskOnCreate(getAccessToken, newTaskRef.id, {
+        title: taskData.title,
+        description: taskData.description,
+        dueDate: taskData.dueDate,
+        syncWithGoogleCalendar,
+        reminderMinutesBefore
+      });
+
       // Limpiar formulario
       setTitle('');
       setDescription('');
@@ -210,8 +229,10 @@ function TaskManager() {
       setCategory('');
       setSelectedUsers([]);
       setIsPublic(false);
+      setSyncWithGoogleCalendar(false);
+      setReminderMinutesBefore(defaultReminderMinutes);
       setShowForm(false);
-      
+
     } catch (error: any) {
       console.error('Error creating task:', error);
       setError('Error al crear la tarea: ' + (error.message || 'Error desconocido'));
@@ -246,11 +267,13 @@ function TaskManager() {
       try {
         setError('');
         setUpdating(taskId);
-        
+
+        const taskToDelete = tasks.find(t => t.id === taskId);
         await deleteDoc(doc(db, 'tasks', taskId));
-        
+        await syncTaskOnDelete(getAccessToken, taskToDelete?.googleEventId);
+
         setUpdating(null);
-        
+
       } catch (error) {
         console.error('Error deleting task:', error);
         setError('Error al eliminar la tarea');
@@ -336,6 +359,8 @@ function TaskManager() {
     setSelectedUsers(userIds);
     
     setIsPublic(task.isPublic || false);
+    setSyncWithGoogleCalendar(task.syncWithGoogleCalendar || false);
+    setReminderMinutesBefore(task.reminderMinutesBefore ?? defaultReminderMinutes);
     setShowEditModal(true);
   };
 
@@ -384,10 +409,12 @@ function TaskManager() {
       };
 
       // Manejar dueDate: agregar si tiene valor válido, eliminar si está vacía
+      let newDueDate: Date | undefined;
       if (dueDate && dueDate.trim()) {
         try {
           const dueDateObj = new Date(dueDate);
           if (!isNaN(dueDateObj.getTime())) {
+            newDueDate = dueDateObj;
             taskData.dueDate = dueDateObj;
           }
         } catch (e) {
@@ -411,10 +438,25 @@ function TaskManager() {
         taskData.sharedWith = deleteField();
       }
 
+      taskData.syncWithGoogleCalendar = syncWithGoogleCalendar;
+      if (syncWithGoogleCalendar) {
+        taskData.reminderMinutesBefore = reminderMinutesBefore;
+      } else if (editingTask?.reminderMinutesBefore !== undefined) {
+        taskData.reminderMinutesBefore = deleteField();
+      }
+
       console.log('Updating task with data:', taskData);
       await updateDoc(doc(db, 'tasks', editingTask.id), taskData);
       console.log('Task updated successfully');
-      
+
+      await syncTaskOnUpdate(getAccessToken, editingTask.id, editingTask.googleEventId, {
+        title: taskData.title,
+        description: taskData.description,
+        dueDate: newDueDate,
+        syncWithGoogleCalendar,
+        reminderMinutesBefore
+      });
+
       // Limpiar formulario y cerrar modal
       setTitle('');
       setDescription('');
@@ -423,9 +465,11 @@ function TaskManager() {
       setCategory('');
       setSelectedUsers([]);
       setIsPublic(false);
+      setSyncWithGoogleCalendar(false);
+      setReminderMinutesBefore(defaultReminderMinutes);
       setEditingTask(null);
       setShowEditModal(false);
-      
+
     } catch (error: any) {
       console.error('Error updating task:', error);
       setError('Error al actualizar la tarea: ' + (error.message || 'Error desconocido'));
@@ -442,6 +486,8 @@ function TaskManager() {
     setCategory('');
     setSelectedUsers([]);
     setIsPublic(false);
+    setSyncWithGoogleCalendar(false);
+    setReminderMinutesBefore(defaultReminderMinutes);
     setEditingTask(null);
     setShowEditModal(false);
     setError('');
@@ -561,9 +607,17 @@ function TaskManager() {
               </label>
             </div>
           </div>
-          
-          <button 
-            type="submit" 
+
+          <GoogleSyncFields
+            idPrefix="newTask"
+            syncEnabled={syncWithGoogleCalendar}
+            onSyncChange={setSyncWithGoogleCalendar}
+            reminderMinutes={reminderMinutesBefore}
+            onReminderChange={setReminderMinutesBefore}
+          />
+
+          <button
+            type="submit"
             disabled={submitting}
             className="btn-primary"
           >
@@ -822,13 +876,21 @@ function TaskManager() {
                     </div>
                   </div>
                 )}
-                
+
+                <GoogleSyncFields
+                  idPrefix="editTask"
+                  syncEnabled={syncWithGoogleCalendar}
+                  onSyncChange={setSyncWithGoogleCalendar}
+                  reminderMinutes={reminderMinutesBefore}
+                  onReminderChange={setReminderMinutesBefore}
+                />
+
                 <div className="modal-actions">
                   <button type="button" onClick={cancelEditing} className="btn-secondary">
                     Cancelar
                   </button>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={submitting}
                     className="btn-primary"
                   >
