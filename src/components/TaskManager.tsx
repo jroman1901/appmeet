@@ -69,6 +69,7 @@ function TaskManager() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [dueTime, setDueTime] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [category, setCategory] = useState('');
   const [filter, setFilter] = useState<TaskFilter>(
@@ -197,7 +198,7 @@ function TaskManager() {
         try {
           // "T00:00:00" fuerza a interpretar la fecha en hora local en vez de UTC
           // (si no, un input type="date" se corre un día hacia atrás en zonas horarias negativas)
-          const dueDateObj = new Date(`${dueDate}T00:00:00`);
+          const dueDateObj = new Date(`${dueDate}T${dueTime || '00:00'}:00`);
           if (!isNaN(dueDateObj.getTime())) {
             taskData.dueDate = dueDateObj;
           }
@@ -235,6 +236,7 @@ function TaskManager() {
       setTitle('');
       setDescription('');
       setDueDate('');
+      setDueTime('');
       setPriority('medium');
       setCategory('');
       setSelectedUsers([]);
@@ -358,6 +360,11 @@ function TaskManager() {
     setTitle(task.title);
     setDescription(task.description);
     setDueDate(task.dueDate && task.dueDate instanceof Date ? format(task.dueDate, 'yyyy-MM-dd') : '');
+    setDueTime(
+      task.dueDate && task.dueDate instanceof Date && (task.dueDate.getHours() !== 0 || task.dueDate.getMinutes() !== 0)
+        ? format(task.dueDate, 'HH:mm')
+        : ''
+    );
     setPriority(task.priority);
     setCategory(task.category || '');
     
@@ -424,7 +431,7 @@ function TaskManager() {
         try {
           // "T00:00:00" fuerza a interpretar la fecha en hora local en vez de UTC
           // (si no, un input type="date" se corre un día hacia atrás en zonas horarias negativas)
-          const dueDateObj = new Date(`${dueDate}T00:00:00`);
+          const dueDateObj = new Date(`${dueDate}T${dueTime || '00:00'}:00`);
           if (!isNaN(dueDateObj.getTime())) {
             newDueDate = dueDateObj;
             taskData.dueDate = dueDateObj;
@@ -473,6 +480,7 @@ function TaskManager() {
       setTitle('');
       setDescription('');
       setDueDate('');
+      setDueTime('');
       setPriority('medium');
       setCategory('');
       setSelectedUsers([]);
@@ -494,6 +502,7 @@ function TaskManager() {
     setTitle('');
     setDescription('');
     setDueDate('');
+    setDueTime('');
     setPriority('medium');
     setCategory('');
     setSelectedUsers([]);
@@ -561,15 +570,26 @@ function TaskManager() {
             />
           </div>
           
-          <div className="form-group">
-            <label htmlFor="taskDueDate">Fecha límite (opcional):</label>
-            <input
-              id="taskDueDate"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="taskDueDate">Fecha límite (opcional):</label>
+              <input
+                id="taskDueDate"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="taskDueTime">Hora (opcional):</label>
+              <input
+                id="taskDueTime"
+                type="time"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
+              />
+            </div>
           </div>
           
           <div className="form-group">
@@ -692,7 +712,9 @@ function TaskManager() {
                 )}
                 {task.dueDate && (
                   <p className="due-date">
-                    <strong>Vence:</strong> {task.dueDate instanceof Date ? format(task.dueDate, 'dd/MM/yyyy', { locale: es }) : 'Fecha inválida'}
+                    <strong>Vence:</strong> {task.dueDate instanceof Date
+                      ? format(task.dueDate, (task.dueDate.getHours() !== 0 || task.dueDate.getMinutes() !== 0) ? 'dd/MM/yyyy HH:mm' : 'dd/MM/yyyy', { locale: es })
+                      : 'Fecha inválida'}
                   </p>
                 )}
                 <p className="created-date">
@@ -828,15 +850,26 @@ function TaskManager() {
                   />
                 </div>
                 
-                <div className="form-group">
-                  <label htmlFor="editTaskDueDate">Fecha límite (opcional):</label>
-                  <input
-                    id="editTaskDueDate"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                  />
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="editTaskDueDate">Fecha límite (opcional):</label>
+                    <input
+                      id="editTaskDueDate"
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="editTaskDueTime">Hora (opcional):</label>
+                    <input
+                      id="editTaskDueTime"
+                      type="time"
+                      value={dueTime}
+                      onChange={(e) => setDueTime(e.target.value)}
+                    />
+                  </div>
                 </div>
                 
                 <div className="form-group">

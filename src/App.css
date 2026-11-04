@@ -34,7 +34,7 @@ body {
 
 /* Navigation */
 .navigation {
-  background: linear-gradient(135deg, #6d28d9 0%, #db2777 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #9333ea 100%);
   color: white;
   padding: 1rem 2rem;
   display: flex;
